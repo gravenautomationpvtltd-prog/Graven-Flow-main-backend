@@ -44,6 +44,10 @@ fi
 
 # 3. Configure Firewall (UFW)
 echo -e "\n${YELLOW}🛡️ [3/6] Configuring firewall rules...${NC}"
+# Stop native PostgreSQL service on host if installed to prevent port clashes
+systemctl stop postgresql 2>/dev/null || true
+systemctl disable postgresql 2>/dev/null || true
+
 ufw allow 22/tcp comment 'SSH' || true
 ufw allow 80/tcp comment 'HTTP' || true
 ufw allow 443/tcp comment 'HTTPS' || true

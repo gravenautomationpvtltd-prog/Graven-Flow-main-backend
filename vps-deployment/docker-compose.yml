@@ -11,7 +11,7 @@ services:
     container_name: graven-postgres
     restart: unless-stopped
     ports:
-      - "${POSTGRES_PORT:-5432}:5432"
+      - "${POSTGRES_PORT:-54322}:5432"
     environment:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Required}
       POSTGRES_DB: ${POSTGRES_DB:-postgres}
