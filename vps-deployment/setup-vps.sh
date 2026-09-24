@@ -74,7 +74,9 @@ if [ ! -f .env ]; then
   
   echo -e "${GREEN}✓ Generated fresh .env with secure random PostgreSQL password and JWT secret.${NC}"
 else
-  echo -e "${GREEN}✓ Using existing .env file.${NC}"
+  # Ensure existing .env doesn't clash with host port 5432
+  sed -i "s|POSTGRES_PORT=5432$|POSTGRES_PORT=54322|g" .env
+  echo -e "${GREEN}✓ Using existing .env file (ensured POSTGRES_PORT=54322).${NC}"
 fi
 
 # 5. Start Supabase Stack
