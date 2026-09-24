@@ -116,6 +116,7 @@ services:
       TEMPORARY_SLOT: "true"
       RLIMIT_NOFILE: "10000"
       SEED_SELF_HOST: "true"
+      SECRET_KEY_BASE: ${SECRET_KEY_BASE:-${JWT_SECRET}${JWT_SECRET}}
     depends_on:
       db:
         condition: service_healthy
