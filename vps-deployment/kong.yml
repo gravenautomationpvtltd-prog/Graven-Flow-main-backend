@@ -81,15 +81,27 @@ plugins:
         - x-client-info
         - X-Requested-With
         - Prefer
+        - prefer
         - Range
+        - range
         - apikey
         - X-Supabase-Api-Version
         - x-supabase-api-version
         - X-Razorpay-Signature
         - x-razorpay-signature
+        - Accept-Profile
+        - accept-profile
+        - Content-Profile
+        - content-profile
+        - X-Upsert
+        - x-upsert
       exposed_headers:
-
         - Content-Range
         - X-Total-Count
+        - Content-Profile
+        - content-profile
+        - Accept-Profile
+        - accept-profile
       max_age: 3600
       credentials: true
+
