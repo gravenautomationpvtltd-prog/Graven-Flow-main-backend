@@ -119,6 +119,8 @@ services:
       RLIMIT_NOFILE: "10000"
       SEED_SELF_HOST: "true"
       SECRET_KEY_BASE: ${SECRET_KEY_BASE:-${JWT_SECRET}${JWT_SECRET}}
+      DB_AFTER_CONNECT_QUERY: "SET search_path TO _realtime"
+      DB_ENC_KEY: ${DB_ENC_KEY:-supabaserealtime}
     depends_on:
       db:
         condition: service_healthy
