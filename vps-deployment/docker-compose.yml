@@ -33,7 +33,7 @@ services:
     container_name: graven-kong
     restart: unless-stopped
     ports:
-      - "${KONG_PORT:-8000}:8000"
+      - "${KONG_PORT:-8088}:8000"
     environment:
       KONG_DATABASE: "off"
       KONG_DECLARATIVE_CONFIG: /var/lib/kong/kong.yml

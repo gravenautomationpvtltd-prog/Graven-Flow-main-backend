@@ -51,7 +51,7 @@ systemctl disable postgresql 2>/dev/null || true
 ufw allow 22/tcp comment 'SSH' || true
 ufw allow 80/tcp comment 'HTTP' || true
 ufw allow 443/tcp comment 'HTTPS' || true
-ufw allow 8000/tcp comment 'Kong API Gateway' || true
+ufw allow 8088/tcp comment 'Kong API Gateway' || true
 ufw allow 3000/tcp comment 'Supabase Studio' || true
 ufw --force enable || true
 echo -e "${GREEN}✓ Firewall configured.${NC}"
@@ -70,13 +70,15 @@ if [ ! -f .env ]; then
 
   sed -i "s|your_super_strong_postgres_password_here|${RAND_PASS}|g" .env
   sed -i "s|super-secret-jwt-token-with-at-least-32-characters-length|${RAND_JWT}|g" .env
-  sed -i "s|http://localhost:8000|http://${SERVER_IP}:8000|g" .env
+  sed -i "s|http://localhost:8088|http://${SERVER_IP}:8088|g" .env
   
   echo -e "${GREEN}✓ Generated fresh .env with secure random PostgreSQL password and JWT secret.${NC}"
 else
-  # Ensure existing .env doesn't clash with host port 5432
+  # Ensure existing .env doesn't clash with host ports 5432 and 8000
   sed -i "s|POSTGRES_PORT=5432$|POSTGRES_PORT=54322|g" .env
-  echo -e "${GREEN}✓ Using existing .env file (ensured POSTGRES_PORT=54322).${NC}"
+  sed -i "s|KONG_PORT=8000$|KONG_PORT=8088|g" .env
+  sed -i "s|:8000|:8088|g" .env
+  echo -e "${GREEN}✓ Using existing .env file (ensured POSTGRES_PORT=54322, KONG_PORT=8088).${NC}"
 fi
 
 # 5. Start Supabase Stack
@@ -104,10 +106,10 @@ SERVER_IP=$(curl -s -4 ifconfig.me || hostname -I | awk '{print $1}')
 echo -e "\n${GREEN}==================================================================${NC}"
 echo -e "${GREEN}  🎉 Graven Flow Backend Successfully Deployed!                   ${NC}"
 echo -e "${GREEN}==================================================================${NC}"
-echo -e "🔗 ${BLUE}API Gateway (Supabase URL):${NC} http://${SERVER_IP}:8000"
+echo -e "🔗 ${BLUE}API Gateway (Supabase URL):${NC} http://${SERVER_IP}:8088"
 echo -e "🖥️ ${BLUE}Supabase Studio (Dashboard):${NC} http://${SERVER_IP}:3000"
-echo -e "🗄️ ${BLUE}PostgreSQL Port:${NC} 5432"
+echo -e "🗄️ ${BLUE}PostgreSQL Port:${NC} 54322"
 echo -e "\n${YELLOW}Next Step for Frontend (Hostinger):${NC}"
 echo -e "Update your frontend environment with your VPS URL:"
-echo -e "VITE_SUPABASE_URL=http://${SERVER_IP}:8000"
+echo -e "VITE_SUPABASE_URL=http://${SERVER_IP}:8088"
 echo -e "=================================================================="
