@@ -69,11 +69,15 @@ plugins:
         - Date
         - ApiKey
         - X-Client-Info
+        - x-client-info
         - X-Requested-With
         - Prefer
         - Range
         - apikey
+        - X-Supabase-Api-Version
+        - x-supabase-api-version
       exposed_headers:
+
         - Content-Range
         - X-Total-Count
       max_age: 3600
