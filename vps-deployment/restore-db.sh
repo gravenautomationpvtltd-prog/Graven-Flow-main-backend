@@ -2,9 +2,17 @@
 set -e
 
 # ==============================================================================
-# Graven Flow - PostgreSQL Database Restore Script
-# Restores flow-whisper-79_260924.backup into the Docker Postgres container
+# Graven Flow - PostgreSQL Database Restore Script (Postgres 17 Compatible)
+# Uses postgres:17-alpine pg_restore to support version 1.16 dump headers
 # ==============================================================================
+
+# Load environment variables from .env if present
+if [ -f .env ]; then
+  POSTGRES_PASSWORD=$(grep '^POSTGRES_PASSWORD=' .env | cut -d '=' -f2-)
+  POSTGRES_DB=$(grep '^POSTGRES_DB=' .env | cut -d '=' -f2-)
+fi
+POSTGRES_PASSWORD="${POSTGRES_PASSWORD:-postgres}"
+POSTGRES_DB="${POSTGRES_DB:-postgres}"
 
 BACKUP_FILE=""
 for candidate in \
@@ -13,7 +21,7 @@ for candidate in \
   "../flow-whisper-79_260924.backup/flow-whisper-79_260924.backup" \
   "./database.backup"; do
   if [ -f "$candidate" ]; then
-    BACKUP_FILE="$candidate"
+    BACKUP_FILE="$(cd "$(dirname "$candidate")" && pwd)/$(basename "$candidate")"
     break
   fi
 done
@@ -30,14 +38,16 @@ until docker exec graven-postgres pg_isready -U postgres -d postgres > /dev/null
   sleep 2
 done
 
-echo "🔄 Copying backup file into container..."
-docker cp "$BACKUP_FILE" graven-postgres:/tmp/restore.backup
+echo "🚀 Restoring PostgreSQL 17 database schema and data..."
+BACKUP_DIR="$(dirname "$BACKUP_FILE")"
+BACKUP_NAME="$(basename "$BACKUP_FILE")"
 
-echo "🚀 Restoring database schema and data..."
-docker exec -e PGPASSWORD="${POSTGRES_PASSWORD:-postgres}" graven-postgres \
-  pg_restore --verbose --clean --if-exists --no-owner --no-privileges -U postgres -d postgres /tmp/restore.backup || true
-
-echo "🧹 Cleaning up temporary container files..."
-docker exec graven-postgres rm -f /tmp/restore.backup
+docker run --rm \
+  --network vps-deployment_default \
+  -v "${BACKUP_DIR}:/backup:ro" \
+  -e PGPASSWORD="${POSTGRES_PASSWORD}" \
+  postgres:17-alpine \
+  pg_restore --verbose --clean --if-exists --no-owner --no-privileges \
+    -h graven-postgres -U postgres -d "${POSTGRES_DB}" "/backup/${BACKUP_NAME}" || true
 
 echo "✅ Database restore completed successfully!"
