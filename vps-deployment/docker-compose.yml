@@ -51,7 +51,7 @@ services:
   # GoTrue (Supabase Auth)
   # ----------------------------------------------------------------------------
   auth:
-    image: supabase/gotrue:v2.158.1
+    image: supabase/gotrue:v2.196.0
     container_name: graven-auth
     restart: unless-stopped
     environment:
@@ -59,7 +59,7 @@ services:
       GOTRUE_API_PORT: 9999
       API_EXTERNAL_URL: ${API_EXTERNAL_URL:-http://localhost:8000}
       GOTRUE_DB_DRIVER: postgres
-      GOTRUE_DB_DATABASE_URL: postgres://postgres:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-postgres}?sslmode=disable
+      GOTRUE_DB_DATABASE_URL: postgres://postgres:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-postgres}?sslmode=disable&search_path=auth
       GOTRUE_SITE_URL: ${SITE_URL:-http://localhost:3000}
       GOTRUE_URI_ALLOW_LIST: ${ADDITIONAL_REDIRECT_URLS:-*}
       GOTRUE_DISABLE_SIGNUP: "false"
