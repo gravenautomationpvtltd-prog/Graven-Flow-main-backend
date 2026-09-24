@@ -1,0 +1,1 @@
+DROP POLICY IF EXISTS "CROs see own assignments" ON public.cro_customer_assignments;

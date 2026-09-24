@@ -1,0 +1,1 @@
+DROP POLICY IF EXISTS "Authenticated users can view basic profile info" ON profiles;

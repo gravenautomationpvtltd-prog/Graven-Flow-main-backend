@@ -1,0 +1,1 @@
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS can_view_price_comparison boolean NOT NULL DEFAULT false;

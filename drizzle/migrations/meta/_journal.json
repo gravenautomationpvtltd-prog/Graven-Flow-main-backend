@@ -1,0 +1,202 @@
+{
+  "version": "7",
+  "dialect": "postgresql",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "7",
+      "when": 1789132717431,
+      "tag": "0000_product_pricing_system",
+      "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1789132951452,
+      "tag": "0001_product_imports_storage_policies",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1789146523821,
+      "tag": "0002_product_logistics_and_matching",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1789149648072,
+      "tag": "0003_product_match_key",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1789149897148,
+      "tag": "0004_model_key_duplicate_report",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1789205119878,
+      "tag": "0005_perf_indexes_hot_paths",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1789211901525,
+      "tag": "0006_add_bie_workspace",
+      "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1789213612417,
+      "tag": "0007_bie_work_tracking",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1789215456593,
+      "tag": "0008_product_attribution_and_assignments",
+      "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1789217564392,
+      "tag": "0009_product_search_key",
+      "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1789362788276,
+      "tag": "0010_bie_work_review_workflow",
+      "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1789363132300,
+      "tag": "0011_tender_tracker",
+      "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1789363159444,
+      "tag": "0012_tender_documents_storage_policies",
+      "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1789364543848,
+      "tag": "0013_bie_completion_on_approval",
+      "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1789535431314,
+      "tag": "0014_gst_api_settings_direct_irp",
+      "breakpoints": true
+    },
+    {
+      "idx": 15,
+      "version": "7",
+      "when": 1789620738013,
+      "tag": "0015_accounting_foundation",
+      "breakpoints": true
+    },
+    {
+      "idx": 16,
+      "version": "7",
+      "when": 1789620840438,
+      "tag": "0016_accounting_posting_engine",
+      "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1789622518494,
+      "tag": "0017_accounts_team_edit_delete_policies",
+      "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1789630774605,
+      "tag": "0018_product_merge_log",
+      "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1789630865687,
+      "tag": "0019_products_upper_model_idx",
+      "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "7",
+      "when": 1789649392000,
+      "tag": "0020_bie_can_delete_products",
+      "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "7",
+      "when": 1789709425258,
+      "tag": "0021_realtime_stock_movements",
+      "breakpoints": true
+    },
+    {
+      "idx": 22,
+      "version": "7",
+      "when": 1789710818305,
+      "tag": "0022_add_qc_role",
+      "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "7",
+      "when": 1789710851392,
+      "tag": "0023_qc_receiving_and_release",
+      "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "7",
+      "when": 1789710946488,
+      "tag": "0024_qc_release_profile_fk",
+      "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "7",
+      "when": 1789712752968,
+      "tag": "0025_qc_release_notes",
+      "breakpoints": true
+    },
+    {
+      "idx": 26,
+      "version": "7",
+      "when": 1789712841834,
+      "tag": "0026_grn_qc_by_fk",
+      "breakpoints": true
+    },
+    {
+      "idx": 27,
+      "version": "7",
+      "when": 1789967209602,
+      "tag": "0027_create_shipping_labels",
+      "breakpoints": true
+    }
+  ]
+}

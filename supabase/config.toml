@@ -1,0 +1,85 @@
+project_id = "iukquqmsrqnmuxpgessm"
+
+[functions.indiamart-leads]
+verify_jwt = false
+
+[functions.whatsapp-webhook]
+verify_jwt = false
+
+[functions.lead-webhook]
+verify_jwt = false
+
+[functions.test-integration]
+verify_jwt = true
+
+[functions.send-payslip-email]
+verify_jwt = true
+
+[functions.send-quotation-email]
+verify_jwt = true
+
+[functions.resend-webhook]
+verify_jwt = false
+
+[functions.tradeindia-leads]
+verify_jwt = false
+
+[functions.send-whatsapp]
+verify_jwt = true
+
+[functions.send-vendor-status-email]
+verify_jwt = true
+
+[functions.send-po-email]
+verify_jwt = true
+
+[functions.admin-create-user]
+verify_jwt = true
+
+[functions.check-escalations]
+verify_jwt = false
+
+[functions.admin-reset-password]
+verify_jwt = true
+
+[functions.admin-update-email]
+verify_jwt = true
+
+[functions.send-dispatch-email]
+verify_jwt = true
+
+[functions.customer-outreach]
+verify_jwt = false
+
+[functions.email-inbound-webhook]
+verify_jwt = false
+
+[functions.send-enquiry-email]
+verify_jwt = true
+
+[functions.razorpay-checkout]
+verify_jwt = false
+
+[functions.razorpay-verify-payment]
+verify_jwt = false
+
+[functions.razorpay-webhook]
+verify_jwt = false
+
+[functions.tenant-org-data]
+verify_jwt = false
+
+[functions.backend-admin-data]
+verify_jwt = false
+
+[functions.generate-einvoice]
+verify_jwt = false
+
+[functions.generate-eway-bill]
+verify_jwt = false
+
+[functions.import-list-prices]
+verify_jwt = false
+
+[functions.test-gst-connection]
+verify_jwt = true

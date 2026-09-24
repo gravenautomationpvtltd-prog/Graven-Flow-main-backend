@@ -1,0 +1,1 @@
+ALTER TABLE cro_customer_assignments ADD COLUMN scheduled_callback_at timestamptz;

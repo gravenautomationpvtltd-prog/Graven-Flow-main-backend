@@ -1,0 +1,11 @@
+CREATE INDEX IF NOT EXISTS idx_leads_vertical_status_active ON public.leads (vertical_id, status) WHERE deleted_at IS NULL;
+CREATE INDEX IF NOT EXISTS idx_leads_vertical_active ON public.leads (vertical_id, created_at DESC) WHERE deleted_at IS NULL;
+CREATE INDEX IF NOT EXISTS idx_customers_vertical_active ON public.customers (vertical_id, created_at DESC) WHERE deleted_at IS NULL;
+CREATE INDEX IF NOT EXISTS idx_customer_payments_sales_order ON public.customer_payments (sales_order_id);
+ANALYZE public.leads;
+ANALYZE public.customers;
+ANALYZE public.customer_payments;
+ANALYZE public.quotations;
+ANALYZE public.quotation_items;
+ANALYZE public.products;
+ANALYZE public.sales_orders;
