@@ -1,0 +1,29 @@
+http:
+  routers:
+    graven-api-http:
+      rule: "Host(`api.gravenonedesk.cloud`)"
+      entryPoints:
+        - http
+      middlewares:
+        - graven-redirect-https
+      service: graven-api-service
+
+    graven-api-https:
+      rule: "Host(`api.gravenonedesk.cloud`)"
+      entryPoints:
+        - https
+      service: graven-api-service
+      tls:
+        certResolver: letsencrypt
+
+  middlewares:
+    graven-redirect-https:
+      redirectScheme:
+        scheme: https
+        permanent: true
+
+  services:
+    graven-api-service:
+      loadBalancer:
+        servers:
+          - url: "http://host.docker.internal:8088"
