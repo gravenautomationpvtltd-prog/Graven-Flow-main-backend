@@ -94,7 +94,13 @@ until docker exec graven-postgres pg_isready -U postgres -d postgres > /dev/null
 done
 echo -e "${GREEN}✓ PostgreSQL database is healthy and ready!${NC}"
 
-# 6. Database Restore
+# 6. Database Restore & Key Setup
+echo -e "\n${YELLOW}🔑 Ensuring cryptographic API keys are initialized...${NC}"
+if [ -f "./generate-keys.sh" ]; then
+  chmod +x ./generate-keys.sh
+  ./generate-keys.sh
+fi
+
 echo -e "\n${YELLOW}💾 [6/6] Checking for database backup to restore...${NC}"
 if [ -f "./restore-db.sh" ]; then
   chmod +x ./restore-db.sh
