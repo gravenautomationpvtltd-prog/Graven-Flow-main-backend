@@ -97,9 +97,11 @@ services:
   # ----------------------------------------------------------------------------
   realtime:
     image: supabase/realtime:v2.30.23
-    container_name: graven-realtime
+    container_name: realtime-dev.supabase-realtime
     restart: unless-stopped
     environment:
+      APP_NAME: realtime
+      RUN_JANITOR: "true"
       PORT: 4000
       DB_HOST: db
       DB_PORT: 5432
