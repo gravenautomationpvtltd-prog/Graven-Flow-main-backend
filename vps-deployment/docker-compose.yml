@@ -114,6 +114,8 @@ services:
       SECURE_CHANNELS: "true"
       SLOT_NAME: supabase_realtime_rls
       TEMPORARY_SLOT: "true"
+      RLIMIT_NOFILE: "10000"
+      SEED_SELF_HOST: "true"
     depends_on:
       db:
         condition: service_healthy
