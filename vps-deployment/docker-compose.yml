@@ -146,6 +146,36 @@ services:
         condition: service_started
 
   # ----------------------------------------------------------------------------
+  # Supabase Edge Runtime (Edge Functions on port 9000)
+  # ----------------------------------------------------------------------------
+  functions:
+    image: supabase/edge-runtime:v1.67.0
+    container_name: graven-edge-runtime
+    restart: unless-stopped
+    environment:
+      JWT_SECRET: ${JWT_SECRET:?Required}
+      SUPABASE_URL: http://kong:8000
+      SUPABASE_ANON_KEY: ${ANON_KEY:?Required}
+      SUPABASE_SERVICE_ROLE_KEY: ${SERVICE_ROLE_KEY:?Required}
+      SUPABASE_DB_URL: postgres://postgres:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-postgres}
+      VERIFY_JWT: "false"
+      RAZORPAY_KEY_ID: ${RAZORPAY_KEY_ID:-}
+      RAZORPAY_KEY_SECRET: ${RAZORPAY_KEY_SECRET:-}
+      RAZORPAY_WEBHOOK_SECRET: ${RAZORPAY_WEBHOOK_SECRET:-}
+      RESEND_API_KEY: ${RESEND_API_KEY:-}
+    volumes:
+      - ../supabase/functions:/home/deno/functions:ro
+    command:
+      - start
+      - --main-service
+      - /home/deno/functions/main
+    depends_on:
+      db:
+        condition: service_healthy
+      kong:
+        condition: service_started
+
+  # ----------------------------------------------------------------------------
   # Supabase Studio (Admin Database UI on port 3000)
   # ----------------------------------------------------------------------------
   studio:

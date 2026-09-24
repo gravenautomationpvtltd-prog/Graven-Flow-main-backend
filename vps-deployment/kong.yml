@@ -46,6 +46,15 @@ services:
         paths:
           - /storage/v1/
 
+  # Edge Functions Service
+  - name: functions-v1
+    url: http://functions:9000/
+    routes:
+      - name: functions-v1-all
+        strip_path: true
+        paths:
+          - /functions/v1/
+
 plugins:
   - name: cors
     config:
@@ -76,6 +85,8 @@ plugins:
         - apikey
         - X-Supabase-Api-Version
         - x-supabase-api-version
+        - X-Razorpay-Signature
+        - x-razorpay-signature
       exposed_headers:
 
         - Content-Range
