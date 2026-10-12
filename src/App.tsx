@@ -1,5 +1,6 @@
 
-import { Suspense, lazy } from "react";
+import { Suspense, lazy, useEffect } from "react";
+import { syncService } from "@/services/syncService";
 import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -61,6 +62,7 @@ const RefundPolicy = lazy(() => import("./pages/legal/RefundPolicy"));
 const AboutUs = lazy(() => import("./pages/AboutUs"));
 const ContactUs = lazy(() => import("./pages/ContactUs"));
 const PaymentPage = lazy(() => import("./pages/PaymentPage"));
+const PaymentStatus = lazy(() => import("./pages/PaymentStatus"));
 const Messages = lazy(() => import("./pages/Messages"));
 const Reports = lazy(() => import("./pages/Reports"));
 const ProcurementTeamReports = lazy(() => import("./pages/reports/ProcurementTeamReports"));
@@ -101,6 +103,7 @@ const SupplierNetworkDetail = lazy(() => import("./pages/supplier-network/Suppli
 const ImportInvoices = lazy(() => import("./pages/supplier-network/ImportInvoices"));
 const SubscriptionExpired = lazy(() => import("./pages/SubscriptionExpired"));
 const ResetPassword = lazy(() => import("./pages/ResetPassword"));
+const SetNewPassword = lazy(() => import("./pages/SetNewPassword"));
 const BackendLogin = lazy(() => import("./pages/backend/BackendLogin"));
 const BackendDashboard = lazy(() => import("./pages/backend/BackendDashboard"));
 const BackendTenants = lazy(() => import("./pages/backend/BackendTenants"));
@@ -117,7 +120,10 @@ const BIEWork = lazy(() => import("./pages/bie/BIEWork"));
 const BIETeamMember = lazy(() => import("./pages/bie/BIETeamMember"));
 const BIEPerformance = lazy(() => import("./pages/bie/BIEPerformance"));
 const BIEMyWork = lazy(() => import("./pages/bie/BIEMyWork"));
-const OAuthConsent = lazy(() => import("./pages/OAuthConsent"));
+const OAuthConsent = lazy(() => import("./pages/OAuthConsent")); 
+const PublicCustomerForm = lazy(() => import("./pages/PublicCustomerForm"));
+const PublicCustomerFeedback = lazy(() => import("./pages/PublicCustomerFeedback"));
+const TSTCaseDetail = lazy(() => import("./pages/TSTCaseDetail"));
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -140,6 +146,30 @@ const PageLoader = () => (
 );
 
 const App = () => {
+  useEffect(() => {
+    // Automatically initialize background synchronization with https://gravenonedesk.in
+    syncService.startAutoSync();
+
+    const handleSyncComplete = (event: any) => {
+      const batchTotal = event?.detail?.batchTotal || 0;
+      // Invalidate active queries for all business entities updated during background sync
+      if (batchTotal > 0) {
+        queryClient.invalidateQueries({ queryKey: ['products'], type: 'active' });
+        queryClient.invalidateQueries({ queryKey: ['customers'], type: 'active' });
+        queryClient.invalidateQueries({ queryKey: ['suppliers'], type: 'active' });
+        queryClient.invalidateQueries({ queryKey: ['inventory'], type: 'active' });
+        queryClient.invalidateQueries({ queryKey: ['leads'], type: 'active' });
+        queryClient.invalidateQueries({ queryKey: ['quotations'], type: 'active' });
+        queryClient.invalidateQueries({ queryKey: ['orders'], type: 'active' });
+        queryClient.invalidateQueries({ queryKey: ['purchase-orders'], type: 'active' });
+      }
+    };
+    window.addEventListener('graven:sync-completed', handleSyncComplete);
+    return () => {
+      window.removeEventListener('graven:sync-completed', handleSyncComplete);
+    };
+  }, []);
+
   return (
     <ThemeProvider attribute="class" defaultTheme="system" enableSystem disableTransitionOnChange>
       <QueryClientProvider client={queryClient}>
@@ -163,12 +193,16 @@ const App = () => {
               <Route path="/terms-of-use" element={<Suspense fallback={<PageLoader />}><TermsOfUse /></Suspense>} />
               <Route path="/refund-policy" element={<Suspense fallback={<PageLoader />}><RefundPolicy /></Suspense>} />
               <Route path="/pay" element={<Suspense fallback={<PageLoader />}><PaymentPage /></Suspense>} />
+              <Route path="/payment-status" element={<Suspense fallback={<PageLoader />}><PaymentStatus /></Suspense>} />
               <Route path="/contact" element={<Suspense fallback={<PageLoader />}><ContactUs /></Suspense>} />
+              <Route path="/customer-form/:token" element={<Suspense fallback={<PageLoader />}><PublicCustomerForm /></Suspense>} />
+              <Route path="/feedback/:token" element={<Suspense fallback={<PageLoader />}><PublicCustomerFeedback /></Suspense>} />
               <Route path="/.lovable/oauth/consent" element={<Suspense fallback={<PageLoader />}><OAuthConsent /></Suspense>} />
 
               {/* Protected routes without AppLayout */}
+              <Route path="/set-new-password" element={<ProtectedRoute><Suspense fallback={<PageLoader />}><SetNewPassword /></Suspense></ProtectedRoute>} />
               <Route path="/onboarding" element={<ProtectedRoute><Suspense fallback={<PageLoader />}><Onboarding /></Suspense></ProtectedRoute>} />
-              <Route path="/subscription-expired" element={<ProtectedRoute><Suspense fallback={<PageLoader />}><SubscriptionExpired /></Suspense></ProtectedRoute>} />
+              <Route path="/subscription-expired" element={<Navigate to="/dashboard" replace />} />
 
               {/* Protected routes with shared AppLayout — sidebar/header persist across navigation */}
               <Route element={<AppOrApproverLayout />}>
@@ -225,6 +259,8 @@ const App = () => {
                 <Route path="/lqt-inbox" element={<LqtInbox />} />
                 <Route path="/spt-inbox" element={<SptInbox />} />
                 <Route path="/tst" element={<TSTQueue />} />
+                <Route path="/tst-queue" element={<TSTQueue />} />
+                <Route path="/tst/case/:id" element={<TSTCaseDetail />} />
                 <Route path="/tst/boq/:id" element={<BoqDetail />} />
                 <Route path="/cro-performance" element={<CROPerformance />} />
                 <Route path="/cro-performance/:croId" element={<CROPerformanceDetail />} />

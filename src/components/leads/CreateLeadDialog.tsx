@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
@@ -204,6 +204,11 @@ export function CreateLeadDialog({ open, onOpenChange }: CreateLeadDialogProps) 
   const [selectedCustomerId, setSelectedCustomerId] = useState<string>('');
   const [duplicateCustomer, setDuplicateCustomer] = useState<DuplicateCustomerInfo | null>(null);
   const [isCheckingDuplicate, setIsCheckingDuplicate] = useState(false);
+  const [isFormSubmitting, setIsFormSubmitting] = useState(false);
+  const isSubmittingRef = useRef(false);
+  const idempotencyKeyRef = useRef<string>(
+    typeof crypto !== 'undefined' && 'randomUUID' in crypto ? crypto.randomUUID() : String(Date.now())
+  );
   
   const { user, isManager, isAdmin, isCRO, isSales, profile, hasRole, isReady } = useAuth();
   const { hasTenant, loading: tenantLoading, refresh: refreshTenant } = useTenantStatus();
@@ -216,11 +221,14 @@ export function CreateLeadDialog({ open, onOpenChange }: CreateLeadDialogProps) 
   const canAssignLeads = isManager || isAdmin;
   const isOrphaned = !tenantLoading && !hasTenant;
 
-  // Re-fetch tenant status when dialog opens to clear stale state
-  // (e.g., for users whose tenant_users membership was just reactivated)
+  // Re-fetch tenant status and fresh idempotency token when dialog opens
   useEffect(() => {
     if (open) {
       refreshTenant();
+      isSubmittingRef.current = false;
+      setIsFormSubmitting(false);
+      idempotencyKeyRef.current =
+        typeof crypto !== 'undefined' && 'randomUUID' in crypto ? crypto.randomUUID() : String(Date.now());
     }
   }, [open, refreshTenant]);
 
@@ -313,169 +321,184 @@ export function CreateLeadDialog({ open, onOpenChange }: CreateLeadDialogProps) 
   }, [customerTab]);
 
   const handleSubmit = async (data: LeadFormData) => {
-    if (!isReady) return;
+    if (!isReady || isSubmittingRef.current) return;
+    isSubmittingRef.current = true;
+    setIsFormSubmitting(true);
 
-    // Pre-flight: re-validate tenant eligibility right before submit so that
-    // a recently-fixed user doesn't hit a confusing RLS failure from cached state.
-    await refreshTenant();
-    const { data: tuCheck } = await supabase
-      .from('tenant_users')
-      .select('tenant_id')
-      .eq('user_id', user!.id)
-      .eq('is_active', true)
-      .limit(1)
-      .maybeSingle();
-    if (!tuCheck?.tenant_id) {
-      toast.error("Your account isn't linked to an organization yet. Please contact your admin to be added before creating leads.");
-      return;
-    }
-
-    let customerId = selectedCustomerId;
-    let assignedTo = data.assigned_to;
-
-    // LQT/CRO creators always retain ownership of leads they create manually,
-    // regardless of customer loyalty. Loyalty is still preserved as a hint via
-    // suggested_assignee_id (handled by the DB trigger from customer.assigned_sales_id).
-    const isCROOnly = isCRO && !isSales && !isManager && !isAdmin;
-    const lqtCreatorKeepsLead = isCROOnly;
-
-    // Determine if we should link to existing customer based on match score
-    const shouldLinkToExisting = duplicateCustomer && 
-      getMatchSeverity(duplicateCustomer.match_score) !== 'possible';
-
-    // If definite or likely duplicate found in new customer tab, use existing customer
-    if (customerTab === 'new' && shouldLinkToExisting && duplicateCustomer) {
-      customerId = duplicateCustomer.id;
-      if (!lqtCreatorKeepsLead) {
-        // Auto-assign to the existing customer's salesperson (customer loyalty)
-        assignedTo = duplicateCustomer.assigned_sales_id || assignedTo;
-      }
-    } else if (customerTab === 'new') {
-      // Create new customer (either no match or just a "possible" match with different location)
-      const customerData = customerForm.getValues();
-      const isValid = await customerForm.trigger();
-      if (!isValid) return;
-
-      try {
-        const assignedSalesIdForNewCustomer = canAssignLeads
-          ? (data.assigned_to || null)
-          : (isCROOnly ? null : (user?.id || null));
-
-        const newCustomer = await createCustomer.mutateAsync({
-          company_name: customerData.company_name,
-          phone: customerData.phone,
-          contact_person: customerData.contact_person || null,
-          email: customerData.email || null,
-          address: customerData.address || null,
-          city: customerData.city || null,
-          state: customerData.state || null,
-          gst_number: customerData.gst_number || null,
-          is_b2b: customerData.is_b2b,
-          assigned_sales_id: assignedSalesIdForNewCustomer,
-          office_id: profile?.office_id || null,
-        });
-        customerId = newCustomer.id;
-        // For new customers, assign to the user creating it (or selected user for managers)
-        assignedTo = assignedSalesIdForNewCustomer || undefined;
-      } catch (error) {
-        // Error is already shown by the mutation's onError handler
-        console.error('Customer creation failed:', error);
+    try {
+      // Pre-flight: re-validate tenant eligibility right before submit so that
+      // a recently-fixed user doesn't hit a confusing RLS failure from cached state.
+      await refreshTenant();
+      const { data: tuCheck } = await supabase
+        .from('tenant_users')
+        .select('tenant_id')
+        .eq('user_id', user!.id)
+        .eq('is_active', true)
+        .limit(1)
+        .maybeSingle();
+      if (!tuCheck?.tenant_id) {
+        toast.error("Your account isn't linked to an organization yet. Please contact your admin to be added before creating leads.");
         return;
       }
-    }
 
-    // LQT/CRO creator always owns the lead they manually create here
-    if (lqtCreatorKeepsLead && user?.id) {
-      assignedTo = user.id;
-    }
+      let customerId = selectedCustomerId;
+      let assignedTo = data.assigned_to;
 
-    // Determine lead assignment if not already set
-    if (!assignedTo) {
-      // If user cannot assign leads (Sales role), auto-assign
-      if (!canAssignLeads) {
-        // Check if existing customer has an assigned salesperson
-        if (customerId) {
-          // Fetch customer directly to get assigned_sales_id
-          const { data: customer } = await supabase
-            .from('customers')
-            .select('assigned_sales_id')
-            .eq('id', customerId)
-            .single();
-          
-          if (customer?.assigned_sales_id) {
-            // Assign to customer's existing salesperson for relationship continuity
-            assignedTo = customer.assigned_sales_id;
+      // LQT/CRO creators always retain ownership of leads they create manually,
+      // regardless of customer loyalty. Loyalty is still preserved as a hint via
+      // suggested_assignee_id (handled by the DB trigger from customer.assigned_sales_id).
+      const isCROOnly = isCRO && !isSales && !isManager && !isAdmin;
+      const lqtCreatorKeepsLead = isCROOnly;
+
+      // Determine if we should link to existing customer based on match score
+      const shouldLinkToExisting = duplicateCustomer && 
+        getMatchSeverity(duplicateCustomer.match_score) !== 'possible';
+
+      // If definite or likely duplicate found in new customer tab, use existing customer
+      if (customerTab === 'new' && shouldLinkToExisting && duplicateCustomer) {
+        customerId = duplicateCustomer.id;
+        if (!lqtCreatorKeepsLead) {
+          // Auto-assign to the existing customer's salesperson (customer loyalty)
+          assignedTo = duplicateCustomer.assigned_sales_id || assignedTo;
+        }
+      } else if (customerTab === 'new') {
+        // Create new customer (either no match or just a "possible" match with different location)
+        const customerData = customerForm.getValues();
+        const isValid = await customerForm.trigger();
+        if (!isValid) return;
+
+        try {
+          const assignedSalesIdForNewCustomer = canAssignLeads
+            ? (data.assigned_to || null)
+            : (isCROOnly ? null : (user?.id || null));
+
+          const newCustomer = await createCustomer.mutateAsync({
+            company_name: customerData.company_name,
+            phone: customerData.phone,
+            contact_person: customerData.contact_person || null,
+            email: customerData.email || null,
+            address: customerData.address || null,
+            city: customerData.city || null,
+            state: customerData.state || null,
+            gst_number: customerData.gst_number || null,
+            is_b2b: customerData.is_b2b,
+            assigned_sales_id: assignedSalesIdForNewCustomer,
+            office_id: profile?.office_id || null,
+          });
+          customerId = newCustomer.id;
+          // For new customers, assign to the user creating it (or selected user for managers)
+          assignedTo = assignedSalesIdForNewCustomer || undefined;
+        } catch (error) {
+          // Error is already shown by the mutation's onError handler
+          console.error('Customer creation failed:', error);
+          return;
+        }
+      }
+
+      // LQT/CRO creator always owns the lead they manually create here
+      if (lqtCreatorKeepsLead && user?.id) {
+        assignedTo = user.id;
+      }
+
+      // Determine lead assignment if not already set
+      if (!assignedTo) {
+        // If user cannot assign leads (Sales role), auto-assign
+        if (!canAssignLeads) {
+          // Check if existing customer has an assigned salesperson
+          if (customerId) {
+            // Fetch customer directly to get assigned_sales_id
+            const { data: customer } = await supabase
+              .from('customers')
+              .select('assigned_sales_id')
+              .eq('id', customerId)
+              .single();
+            
+            if (customer?.assigned_sales_id) {
+              // Assign to customer's existing salesperson for relationship continuity
+              assignedTo = customer.assigned_sales_id;
+            } else if (isCROOnly) {
+              // CRO-only user — leave null so DB trigger handles round-robin
+              assignedTo = undefined;
+            } else {
+              // New customer or no assigned sales - assign to current user
+              assignedTo = user?.id;
+            }
           } else if (isCROOnly) {
-            // CRO-only user — leave null so DB trigger handles round-robin
+            // CRO-only with no customer — leave null for round-robin
             assignedTo = undefined;
           } else {
-            // New customer or no assigned sales - assign to current user
+            // No customer selected - assign to current user
             assignedTo = user?.id;
           }
-        } else if (isCROOnly) {
-          // CRO-only with no customer — leave null for round-robin
-          assignedTo = undefined;
         } else {
-          // No customer selected - assign to current user
-          assignedTo = user?.id;
-        }
-      } else {
-        // Manager/Admin didn't select anyone - check customer's assigned sales
-        if (customerId) {
-          const { data: customer } = await supabase
-            .from('customers')
-            .select('assigned_sales_id')
-            .eq('id', customerId)
-            .single();
-          
-          if (customer?.assigned_sales_id) {
-            assignedTo = customer.assigned_sales_id;
+          // Manager/Admin didn't select anyone - check customer's assigned sales
+          if (customerId) {
+            const { data: customer } = await supabase
+              .from('customers')
+              .select('assigned_sales_id')
+              .eq('id', customerId)
+              .single();
+            
+            if (customer?.assigned_sales_id) {
+              assignedTo = customer.assigned_sales_id;
+            }
           }
         }
       }
+
+      // Determine office_id - use creator's office for manual leads
+      const creatorOfficeId = profile?.office_id || null;
+
+      // Normalize source_reference: strip whitespace, treat empty/generic-label values as null
+      const rawRef = data.source_reference?.trim() ?? '';
+      const isGenericLabel = rawRef.toLowerCase() === data.source.toLowerCase();
+      const normalizedSourceRef = (data.source === 'manual' || !rawRef || isGenericLabel)
+        ? null
+        : rawRef;
+
+      await createLead.mutateAsync({
+        title: data.title,
+        source: data.source,
+        source_reference: normalizedSourceRef,
+        customer_id: customerId || null,
+        customer_query: data.customer_query || null,
+        estimated_value: data.estimated_value || null,
+        assigned_to: assignedTo || null,
+        expected_close_date: data.expected_close_date || null,
+        office_id: creatorOfficeId, // Set to creator's office for manual leads
+        idempotency_key: idempotencyKeyRef.current,
+      } as any);
+
+      onOpenChange(false);
+      leadForm.reset();
+      customerForm.reset();
+      setSelectedCustomerId('');
+      setCustomerTab('existing');
+      setDuplicateCustomer(null);
+    } catch (err) {
+      console.error('Lead creation submission failed:', err);
+    } finally {
+      isSubmittingRef.current = false;
+      setIsFormSubmitting(false);
     }
-
-    // Determine office_id - use creator's office for manual leads
-    const creatorOfficeId = profile?.office_id || null;
-
-    // Normalize source_reference: strip whitespace, treat empty/generic-label values as null
-    const rawRef = data.source_reference?.trim() ?? '';
-    const isGenericLabel = rawRef.toLowerCase() === data.source.toLowerCase();
-    const normalizedSourceRef = (data.source === 'manual' || !rawRef || isGenericLabel)
-      ? null
-      : rawRef;
-
-    await createLead.mutateAsync({
-      title: data.title,
-      source: data.source,
-      source_reference: normalizedSourceRef,
-      customer_id: customerId || null,
-      customer_query: data.customer_query || null,
-      estimated_value: data.estimated_value || null,
-      assigned_to: assignedTo || null,
-      expected_close_date: data.expected_close_date || null,
-      office_id: creatorOfficeId, // Set to creator's office for manual leads
-    });
-
-    onOpenChange(false);
-    leadForm.reset();
-    customerForm.reset();
-    setSelectedCustomerId('');
-    setCustomerTab('existing');
-    setDuplicateCustomer(null);
   };
 
-  const isSubmitting = createLead.isPending || createCustomer.isPending || !isReady;
+  const isSubmitting = isFormSubmitting || createLead.isPending || createCustomer.isPending || !isReady;
 
   // Reset form on dialog close
   const handleOpenChange = (isOpen: boolean) => {
     if (!isOpen) {
+      isSubmittingRef.current = false;
+      setIsFormSubmitting(false);
       leadForm.reset();
       customerForm.reset();
       setSelectedCustomerId('');
       setCustomerTab('existing');
       setDuplicateCustomer(null);
       setIsCheckingDuplicate(false);
+    } else {
+      idempotencyKeyRef.current =
+        typeof crypto !== 'undefined' && 'randomUUID' in crypto ? crypto.randomUUID() : String(Date.now());
     }
     onOpenChange(isOpen);
   };
@@ -787,7 +810,7 @@ export function CreateLeadDialog({ open, onOpenChange }: CreateLeadDialogProps) 
                 ) : isSubmitting ? (
                   <>
                     <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    Creating...
+                    Creating Lead...
                   </>
                 ) : duplicateCustomer && getMatchSeverity(duplicateCustomer.match_score) !== 'possible' ? (
                   'Create Lead (Link to Existing Customer)'

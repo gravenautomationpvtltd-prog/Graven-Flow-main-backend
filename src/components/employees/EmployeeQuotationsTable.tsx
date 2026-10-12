@@ -14,6 +14,7 @@ import {
 } from '@/components/ui/tooltip';
 import { CheckCircle2, Clock, Package } from 'lucide-react';
 import { useEmployeeQuotations } from '@/hooks/useEmployeeDetailedStats';
+import { CopyableText } from '@/components/shared/CopyableText';
 import { DateRangeParam } from '@/hooks/useEmployeeStats';
 
 interface EmployeeQuotationsTableProps {
@@ -88,19 +89,25 @@ export function EmployeeQuotationsTable({ employeeId, dateRange }: EmployeeQuota
                     ).filter(Boolean) || [];
 
                     return (
-                      <TableRow 
-                        key={quotation.id}
-                        className="cursor-pointer hover:bg-muted/50"
-                        onClick={() => lead?.id && navigate(`/leads/${lead.id}`)}
-                      >
+                      <TableRow key={quotation.id}>
                         <TableCell className="font-mono font-medium">
-                          {quotation.quotation_number}
+                          <CopyableText text={quotation.quotation_number} />
                         </TableCell>
                         <TableCell className="max-w-[200px] truncate">
-                          {lead?.title || '-'}
+                          {lead?.title ? (
+                            <CopyableText
+                              text={lead.title}
+                              onClickText={!lead.customer?.company_name && lead?.id ? () => navigate(`/leads/${lead.id}`) : undefined}
+                            />
+                          ) : '-'}
                         </TableCell>
                         <TableCell>
-                          {lead?.customer?.company_name || '-'}
+                          {lead?.customer?.company_name ? (
+                            <CopyableText
+                              text={lead.customer.company_name}
+                              onClickText={lead?.id ? () => navigate(`/leads/${lead.id}`) : undefined}
+                            />
+                          ) : '-'}
                         </TableCell>
                         <TableCell>
                           {productNames.length > 0 ? (

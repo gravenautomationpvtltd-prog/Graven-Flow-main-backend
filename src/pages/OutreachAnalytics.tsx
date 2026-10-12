@@ -4,7 +4,8 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Mail, MessageCircle, Users, TrendingUp, Calendar } from 'lucide-react';
+import { Mail, Users, TrendingUp, Calendar } from 'lucide-react';
+import { WhatsAppIcon } from '@/components/icons/WhatsAppIcon';
 import { useOutreachTotals, useOutreachStatsByUser, useOutreachAnalytics } from '@/hooks/useOutreachAnalytics';
 import { OutreachByUserTable } from '@/components/outreach/OutreachByUserTable';
 import { OutreachLogTable } from '@/components/outreach/OutreachLogTable';
@@ -78,7 +79,7 @@ export default function OutreachAnalytics() {
         <Card>
           <CardHeader className="flex flex-row items-center justify-between pb-2">
             <CardTitle className="text-sm font-medium">WhatsApp Sent</CardTitle>
-            <MessageCircle className="h-4 w-4 text-green-500" />
+            <WhatsAppIcon className="h-4 w-4 text-green-500" />
           </CardHeader>
           <CardContent>
             {loadingTotals ? (

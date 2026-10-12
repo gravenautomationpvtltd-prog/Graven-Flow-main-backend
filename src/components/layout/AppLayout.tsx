@@ -5,6 +5,7 @@ import { AppSidebar } from './AppSidebar';
 import { AppHeader } from './AppHeader';
 import { useAutoAttendance } from '@/hooks/useAutoAttendance';
 import { useInventoryRealtime } from '@/hooks/useInventoryRealtime';
+import { useLeadsRealtime } from '@/hooks/useLeadsRealtime';
 import { Loader2 } from 'lucide-react';
 
 const ContentLoader = () => (
@@ -16,6 +17,7 @@ const ContentLoader = () => (
 export function AppLayout() {
   useAutoAttendance();
   useInventoryRealtime();
+  useLeadsRealtime();
 
   return (
     <SidebarProvider>

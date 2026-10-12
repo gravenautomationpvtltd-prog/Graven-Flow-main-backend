@@ -30,6 +30,38 @@ function extractProductKey(productName: string | null | undefined): string | nul
   return cleaned.toLowerCase().slice(0, 60);
 }
 
+function parseTradeIndiaTime(timeStr?: string | null): string {
+  if (!timeStr) return new Date().toISOString();
+  const str = String(timeStr).trim();
+  if (!str) return new Date().toISOString();
+  
+  if (/[+\-Z]/.test(str.slice(-6))) {
+    const d = new Date(str);
+    if (!isNaN(d.getTime())) return d.toISOString();
+  }
+  
+  // DD-MM-YYYY HH:mm:ss
+  const ddmmyyyy = str.match(/^(\d{2})[-/](\d{2})[-/](\d{4})(?:[ T](\d{2}):(\d{2})(?::(\d{2}))?)?/);
+  if (ddmmyyyy) {
+    const [, d, m, y, hh = '00', mm = '00', ss = '00'] = ddmmyyyy;
+    const iso = `${y}-${m}-${d}T${hh}:${mm}:${ss}+05:30`;
+    const dt = new Date(iso);
+    if (!isNaN(dt.getTime())) return dt.toISOString();
+  }
+  
+  // YYYY-MM-DD HH:mm:ss
+  const yyyymmdd = str.match(/^(\d{4})[-/](\d{2})[-/](\d{2})(?:[ T](\d{2}):(\d{2})(?::(\d{2}))?)?/);
+  if (yyyymmdd) {
+    const [, y, m, d, hh = '00', mm = '00', ss = '00'] = yyyymmdd;
+    const iso = `${y}-${m}-${d}T${hh}:${mm}:${ss}+05:30`;
+    const dt = new Date(iso);
+    if (!isNaN(dt.getTime())) return dt.toISOString();
+  }
+  
+  const fallback = new Date(str.replace(' ', 'T') + '+05:30');
+  return isNaN(fallback.getTime()) ? new Date().toISOString() : fallback.toISOString();
+}
+
 async function findOpenRecentLead(
   supabase: any,
   opts: { source: string; tenantId: string | null; customerId: string; productKey: string | null }
@@ -355,111 +387,108 @@ serve(async (req) => {
           ? 'https://www.tradeindia.com/utils/my_buy_leads.html'
           : 'https://www.tradeindia.com/utils/my_inquiry.html';
 
-        const userid = (account.userid || '').trim();
-        const profileId = (account.profile_id || '').trim();
-        const apiKey = (account.api_key || '').trim();
+        const userid = (account.userid || Deno.env.get('TRADEINDIA_USER_ID') || '15640700').trim();
+        const profileId = (account.profile_id || Deno.env.get('TRADEINDIA_PROFILE_ID') || '33509782').trim();
+        const apiKey = (account.api_key || Deno.env.get('TRADEINDIA_API_KEY') || '').trim();
 
-        const toDate = new Date();
-        const fromDate = new Date();
-        fromDate.setDate(fromDate.getDate() - 30);
-        
-        const fromDateStr = fromDate.toISOString().split('T')[0];
-        const toDateStr = toDate.toISOString().split('T')[0];
+        // TradeIndia strictly enforces max 24 hours per query. We query today and yesterday.
+        const now = new Date();
+        const todayStr = now.toISOString().split('T')[0];
+        const yesterday = new Date(now.getTime() - 24 * 3600 * 1000);
+        const yesterdayStr = yesterday.toISOString().split('T')[0];
+        const datesToQuery = [todayStr, yesterdayStr];
 
-        const apiUrl = `${baseUrl}?userid=${userid}&profile_id=${profileId}&key=${apiKey}&from_date=${fromDateStr}&to_date=${toDateStr}`;
-        
-        console.log(`Fetching leads from TradeIndia ${account.account_type} API...`);
-        console.log(`API URL (masked): ${baseUrl}?userid=${userid}&profile_id=${profileId}&key=***&from_date=${fromDateStr}&to_date=${toDateStr}`);
-        
-        const response = await fetch(apiUrl, {
-          method: 'GET',
-          headers: {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-            'Accept': 'application/json, text/plain, */*',
-            'Accept-Language': 'en-US,en;q=0.9',
-            'Cache-Control': 'no-cache',
-          },
-        });
-        
-        if (!response.ok) {
-          throw new Error(`TradeIndia API returned HTTP status ${response.status}`);
-        }
-        
-        const contentType = response.headers.get('content-type') || '';
-        if (contentType.includes('text/html') || (!contentType.includes('application/json') && !contentType.includes('text/plain'))) {
-          const htmlContent = await response.text();
-          console.error('TradeIndia returned HTML instead of JSON:', htmlContent.substring(0, 500));
-          throw new Error('TradeIndia API returned an error page. Please verify your credentials.');
-        }
-        
-        let data;
-        const responseText = await response.text();
-        
-        if (responseText.includes('maintenance') || responseText.includes('undergoing maintenance')) {
-          console.log('TradeIndia API is under maintenance');
-          throw new Error('TradeIndia API is currently under maintenance. Please try again later.');
-        }
-        
-        try {
-          data = JSON.parse(responseText);
-          while (typeof data === 'string') {
-            console.log('Response was string-encoded, parsing again...');
-            data = JSON.parse(data);
-          }
-        } catch (parseError) {
-          console.error('Failed to parse TradeIndia response:', responseText.substring(0, 500));
-          throw new Error('TradeIndia API returned invalid JSON.');
-        }
+        console.log(`Fetching leads from TradeIndia ${account.account_type} API for dates: ${datesToQuery.join(', ')}`);
+        const maskedKey = apiKey.slice(0, 4) + '***' + apiKey.slice(-4);
+        console.log(`API URL (masked): ${baseUrl}?userid=${userid}&profile_id=${profileId}&key=${maskedKey}&from_date=${todayStr}&to_date=${todayStr}`);
 
-        console.log('TradeIndia API Response Keys:', Object.keys(data));
-        console.log('Response STATUS:', data.STATUS);
-        console.log('Response TOTAL_RECORDS:', data.TOTAL_RECORDS);
-        
-        if (data.STATUS === 'FAILURE' || data.error) {
-          console.error('TradeIndia API error:', data);
-          
-          if (logEntry) {
-            await supabase
-              .from('integration_logs')
-              .update({
-                status: 'error',
-                error_message: data.MESSAGE || data.error || 'Failed to fetch leads',
-                metadata: { ...logEntry.metadata, error: data }
-              })
-              .eq('id', logEntry.id);
-          }
+        let allLeads: any[] = [];
+        const modes = account.account_type === 'buy_leads' ? ['', '&responded_buy_leads=1'] : [''];
 
-          accountResults.push({
-            account: account.account_name,
-            leads_synced: 0,
-            error: data.MESSAGE || data.error || 'API error',
-          });
-          continue;
-        }
+        for (const dateStr of datesToQuery) {
+          for (const mode of modes) {
+            let pageNo = 1;
+            let hasMore = true;
 
-        let leads: any[] = [];
-        
-        console.log('Data type:', typeof data, 'Is Array:', Array.isArray(data));
-        
-        if (Array.isArray(data)) {
-          leads = data;
-          console.log('Parsed as direct array');
-        } else if (typeof data === 'object' && data !== null) {
-          const keys = Object.keys(data);
-          const hasNumericKeys = keys.length > 0 && keys.some(k => !isNaN(Number(k)) && Number(k) >= 0);
-          
-          console.log('Keys sample:', keys.slice(0, 5), 'Has numeric keys:', hasNumericKeys);
-          
-          if (hasNumericKeys && !data.STATUS && !data.error) {
-            leads = Object.values(data);
-            console.log('Parsed as numeric-keyed object, got', leads.length, 'items');
-          } else {
-            leads = data.data || data.RESPONSE || data.leads || data.leads_list || data.result || [];
-            console.log('Parsed as standard object');
+            while (hasMore) {
+              const apiUrl = `${baseUrl}?userid=${userid}&profile_id=${profileId}&key=${apiKey}&from_date=${dateStr}&to_date=${dateStr}&limit=50&page_no=${pageNo}${mode}`;
+              
+              const response = await fetch(apiUrl, {
+                method: 'GET',
+                headers: {
+                  'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                  'Accept': 'application/json, text/plain, */*',
+                  'Cache-Control': 'no-cache',
+                },
+              });
+              
+              if (!response.ok) {
+                console.warn(`TradeIndia API returned HTTP status ${response.status} for ${dateStr} (mode: ${mode})`);
+                break;
+              }
+              
+              const responseText = await response.text();
+              if (responseText.includes('maintenance') || responseText.includes('undergoing maintenance')) {
+                throw new Error('TradeIndia API is currently under maintenance. Please try again later.');
+              }
+              
+              let data: any;
+              try {
+                data = JSON.parse(responseText);
+                while (typeof data === 'string') {
+                  data = JSON.parse(data);
+                }
+              } catch {
+                console.warn('Failed to parse TradeIndia response for', dateStr);
+                break;
+              }
+
+              if (data?.STATUS === 'FAILURE' || data?.error) {
+                console.warn('TradeIndia API warning for', dateStr, data);
+                break;
+              }
+
+              let batch: any[] = [];
+              if (Array.isArray(data)) {
+                batch = data;
+              } else if (typeof data === 'object' && data !== null) {
+                const keys = Object.keys(data);
+                const hasNumericKeys = keys.length > 0 && keys.some(k => !isNaN(Number(k)) && Number(k) >= 0);
+                if (hasNumericKeys) {
+                  batch = Object.values(data);
+                } else {
+                  batch = data.data || data.RESPONSE || data.leads || data.leads_list || data.result || [];
+                }
+              }
+
+              if (batch.length === 0) {
+                hasMore = false;
+              } else {
+                allLeads.push(...batch);
+                if (batch.length < 50) {
+                  hasMore = false;
+                } else {
+                  pageNo++;
+                }
+              }
+            }
           }
         }
-        
-        console.log(`Found ${leads.length} leads in response`);
+
+        // Deduplicate leads within this batch by unique lead ID
+        const seenRefIds = new Set<string>();
+        const uniqueLeads: any[] = [];
+        for (const it of allLeads) {
+          const ref = String(it.lead_id || it.rfi_id || it.query_id || it.QUERY_ID || it.id || '').trim();
+          if (ref) {
+            if (seenRefIds.has(ref)) continue;
+            seenRefIds.add(ref);
+          }
+          uniqueLeads.push(it);
+        }
+
+        const leads = uniqueLeads;
+        console.log(`Found ${leads.length} unique TradeIndia leads in response for account ${account.account_name}`);
         
         if (leads.length > 0) {
           console.log('First lead structure:', JSON.stringify(leads[0]).substring(0, 500));
@@ -470,20 +499,26 @@ serve(async (req) => {
 
         for (const lead of leads) {
           try {
-            const rawPhone = lead.sender_mobile || lead.mobile || lead.SENDER_MOBILE;
-            const email = lead.sender_email || lead.email || lead.SENDER_EMAIL;
-            const companyName = lead.sender_company || lead.company_name || lead.SENDER_COMPANY || 'Unknown Company';
-            const contactName = lead.sender_name || lead.contact_name || lead.SENDER_NAME;
-            const city = lead.sender_city || lead.city || lead.SENDER_CITY;
-            const state = lead.sender_state || lead.state || lead.SENDER_STATE;
-            const address = lead.sender_address || lead.address || lead.SENDER_ADDRESS;
-            const queryId = lead.rfi_id || lead.query_id || lead.QUERY_ID || `TI-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-            const subject = lead.subject || lead.product_name || lead.SUBJECT || 'TradeIndia Enquiry';
-            const message = lead.message || lead.query_message || lead.QUERY_MESSAGE || '';
+            // Support both Direct Inquiries (flat fields) and Purchase Leads (nested contact_details)
+            const contact = lead.contact_details || {};
+            const rawPhone = contact.contact_number || contact.phone_no || lead.sender_mobile || lead.mobile || lead.SENDER_MOBILE || '';
+            const email = (lead.sender_email && lead.sender_email !== 'NA' ? lead.sender_email : contact.contact_email || lead.email || lead.SENDER_EMAIL || '').trim().toLowerCase() || null;
+            const contactName = contact.user_name || lead.sender_name || lead.contact_name || lead.SENDER_NAME || 'TradeIndia Buyer';
+            const companyName = lead.co_name || lead.company_name || lead.sender_company || lead.sender_co || lead.SENDER_COMPANY || (contactName ? `${contactName} (TradeIndia Lead)` : 'Unknown Company');
+            const city = contact.city || lead.sender_city || lead.city || lead.SENDER_CITY || null;
+            const state = contact.state || lead.sender_state || lead.state || lead.SENDER_STATE || null;
+            const address = contact.address || lead.sender_address || lead.address || lead.SENDER_ADDRESS || null;
+            const queryId = String(lead.lead_id || lead.rfi_id || lead.query_id || lead.QUERY_ID || '').trim() || `TI-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+            const subject = lead.product_name || lead.subject || lead.SUBJECT || 'TradeIndia Lead';
+            const message = [
+              lead.description || lead.message || lead.query_message || lead.QUERY_MESSAGE || '',
+              lead.specification ? `Specification: ${lead.specification}` : '',
+              lead.quantity ? `Quantity: ${lead.quantity} ${lead.unit || ''}` : ''
+            ].filter(Boolean).join('\n\n');
             const productName = lead.product_name || lead.QUERY_PRODUCT_NAME || '';
 
             if (!rawPhone && !email) {
-              console.log('Skipping lead without contact info');
+              console.log('Skipping lead without contact info:', queryId);
               continue;
             }
 
@@ -590,6 +625,7 @@ serve(async (req) => {
             // LQT-FIRST: Insert with assigned_to=null so the DB trigger
             // (auto_assign_lead_on_insert) routes via pick_next_lqt_user(tenant_id).
             const customerQuery = message || (productName ? `Product: ${productName}` : subject);
+            const rawLeadTime = lead.generated_date || lead.inquiry_date || lead.query_time || lead.posted_date || lead.created_date || lead.DATE || lead.GENERATED_DATE;
 
             const { data: newLead, error: leadError } = await supabase
               .from('leads')
@@ -603,6 +639,7 @@ serve(async (req) => {
                 office_id: lucknowOfficeId,
                 status: 'new',
                 tenant_id: account.tenant_id || null,
+                created_at: parseTradeIndiaTime(rawLeadTime),
               }, {
                 onConflict: 'source,source_reference',
                 ignoreDuplicates: true

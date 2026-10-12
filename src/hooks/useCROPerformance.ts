@@ -35,7 +35,7 @@ export function useCROPerformance() {
         .from('user_roles')
         .select('user_id')
         .eq('role', 'cro');
-
+ 
       if (rolesError) throw rolesError;
 
       const croUserIds = (croRoles || []).map(r => r.user_id);

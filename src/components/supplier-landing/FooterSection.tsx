@@ -1,5 +1,6 @@
 import { companyInfo, supportedCountries } from '@/lib/supplier-landing-content';
-import { Mail, Phone, MapPin, Globe, MessageCircle } from 'lucide-react';
+import { Mail, Phone, MapPin, Globe } from 'lucide-react';
+import { WhatsAppIcon } from '@/components/icons/WhatsAppIcon';
 import { Link } from 'react-router-dom';
 import gravenLogo from '@/assets/graven-logo.png';
 
@@ -39,7 +40,7 @@ export function FooterSection() {
               >
                 <Phone className="w-4 h-4" />
                 +91 7905350134
-                <MessageCircle className="w-4 h-4 text-[#25D366]" />
+                <WhatsAppIcon className="w-4 h-4 text-[#25D366]" />
               </a>
               <a 
                 href="https://wa.me/919919089567"
@@ -49,7 +50,7 @@ export function FooterSection() {
               >
                 <Phone className="w-4 h-4" />
                 +91 9919089567
-                <MessageCircle className="w-4 h-4 text-[#25D366]" />
+                <WhatsAppIcon className="w-4 h-4 text-[#25D366]" />
               </a>
               <div className="flex items-center gap-2 text-[#8b949e]">
                 <MapPin className="w-4 h-4" />

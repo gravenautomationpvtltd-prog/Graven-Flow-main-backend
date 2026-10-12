@@ -2,6 +2,7 @@ import { format } from 'date-fns';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
+import { FileText } from 'lucide-react';
 import { useEmployeeOrders, DateRangeParam } from '@/hooks/useEmployeeStats';
 
 const statusColors: Record<string, string> = {
@@ -55,7 +56,17 @@ export function EmployeeOrdersTable({ employeeId, dateRange }: EmployeeOrdersTab
         <TableBody>
           {orders.map((order) => (
             <TableRow key={order.id}>
-              <TableCell className="font-medium">{order.order_number}</TableCell>
+              <TableCell className="font-medium">
+                <div className="flex flex-col gap-0.5">
+                  <span>{order.order_number}</span>
+                  {(order as any).documents && (order as any).documents.length > 0 && (
+                    <Badge variant="outline" className="w-fit text-[10px] px-1 py-0 h-3.5 bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-950/40 dark:text-blue-300">
+                      <FileText className="h-2.5 w-2.5 mr-0.5" />
+                      PO
+                    </Badge>
+                  )}
+                </div>
+              </TableCell>
               <TableCell>{order.lead?.customer?.company_name || '—'}</TableCell>
               <TableCell>
                 <Badge className={statusColors[order.status] || ''}>

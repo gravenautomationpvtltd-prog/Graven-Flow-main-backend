@@ -1,6 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from '@/hooks/use-toast';
+import { invalidateDashboardData } from '@/lib/dashboard-invalidation';
 import type { Database } from '@/integrations/supabase/types';
 
 type PaymentMode = Database['public']['Enums']['payment_mode'];
@@ -82,17 +83,11 @@ export function useCreatePayment() {
       return payment;
     },
     onSuccess: (_, variables) => {
+      invalidateDashboardData(queryClient);
       queryClient.invalidateQueries({ queryKey: ['customer-payments', variables.customer_id] });
       queryClient.invalidateQueries({ queryKey: ['customer-ledger', variables.customer_id] });
       queryClient.invalidateQueries({ queryKey: ['customer-stats'] });
-      queryClient.invalidateQueries({ queryKey: ['accounts-unified-data'] });
-      queryClient.invalidateQueries({ queryKey: ['accounts-stats'] });
-      queryClient.invalidateQueries({ queryKey: ['receivables-aging'] });
-      queryClient.invalidateQueries({ queryKey: ['top-outstanding-customers'] });
-      queryClient.invalidateQueries({ queryKey: ['payment-collection-trend'] });
-      queryClient.invalidateQueries({ queryKey: ['receivables-drilldown'] });
       queryClient.invalidateQueries({ queryKey: ['sales-orders'] });
-      queryClient.invalidateQueries({ queryKey: ['dashboard'] });
       queryClient.invalidateQueries({ queryKey: ['invoices'] });
       toast({ title: 'Payment recorded successfully' });
     },

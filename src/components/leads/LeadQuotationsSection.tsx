@@ -11,7 +11,6 @@ import {
   Send, 
   Eye,
   Download,
-  MessageSquare,
   Mail,
   MoreHorizontal,
   Edit,
@@ -24,10 +23,12 @@ import { useQuotations, useQuotation, useDeleteQuotation, QuotationWithDetails }
 import { useLeadDraftQuotation } from '@/hooks/useDraftQuotation';
 import { useEmailLogs } from '@/hooks/useEmailLogs';
 import { useDefaultContactInfo } from '@/hooks/useCompanySettings';
+import { formatISTDateTime } from '@/lib/date-utils';
 import { useTenantBranding } from '@/hooks/useTenantBranding';
 import { CreateQuotationDialog } from '@/components/quotations/CreateQuotationDialog';
 import { DuplicateQuotationDialog, type DuplicateSelection } from '@/components/quotations/DuplicateQuotationDialog';
 import { ViewQuotationDialog } from '@/components/quotations/ViewQuotationDialog';
+import { WhatsAppIcon } from '@/components/icons/WhatsAppIcon';
 import { EditQuotationDialog } from '@/components/quotations/EditQuotationDialog';
 import { SendEmailDialog } from '@/components/quotations/SendEmailDialog';
 import { EmailStatusBadge } from '@/components/quotations/EmailStatusBadge';
@@ -198,6 +199,16 @@ export function LeadQuotationsSection({
   };
 
   const handleCreateNew = () => {
+    // If an in-progress draft quotation already exists for this lead, continue it instead of spawning a duplicate
+    const activeDraft = draftQuotations[0] || (existingDraft ? { id: existingDraft.id, quotation_number: (existingDraft as any).quotation_number } : null);
+    if (activeDraft) {
+      toast.info(`Continuing existing draft quotation ${activeDraft.quotation_number || ''}`);
+      setContinueDraftId(activeDraft.id);
+      setDuplicateFromId(undefined);
+      setIsCreateOpen(true);
+      return;
+    }
+
     setContinueDraftId(undefined);
     setDuplicateFromId(undefined);
     setIsCreateOpen(true);
@@ -388,7 +399,7 @@ export function LeadQuotationsSection({
                               </Badge>
                             </div>
                             <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                              <span>Last edited {format(new Date(quotation.updated_at), 'dd MMM yyyy, HH:mm')}</span>
+                              <span>Last edited {formatISTDateTime(quotation.updated_at)}</span>
                             </div>
                           </div>
                         </div>
@@ -484,7 +495,7 @@ export function LeadQuotationsSection({
                           )}
                         </div>
                         <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                          <span>{format(new Date(quotation.created_at), 'dd MMM yyyy')}</span>
+                          <span>{formatISTDateTime(quotation.created_at)}</span>
                           {quotation.valid_until && (
                             <>
                               <span>•</span>
@@ -553,7 +564,7 @@ export function LeadQuotationsSection({
                               className="text-green-600"
                               onClick={() => handleSendWhatsApp(quotation)}
                             >
-                              <MessageSquare className="h-4 w-4 mr-2" />
+                              <WhatsAppIcon className="h-4 w-4 mr-2" />
                               Send via WhatsApp
                             </DropdownMenuItem>
                           )}

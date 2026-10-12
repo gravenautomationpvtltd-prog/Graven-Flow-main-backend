@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Tooltip, TooltipContent, TooltipTrigger, TooltipProvider } from '@/components/ui/tooltip';
 import { ArrowRight, Package, Clock, Inbox, Zap, Hourglass, CheckCircle2, User } from 'lucide-react';
-import { formatDistanceToNow } from 'date-fns';
+import { formatISTDateTime, formatISTRelativeTime } from '@/lib/date-utils';
 import {
   type SptInboxLead,
   type SptInboxTab,
@@ -13,6 +13,7 @@ import {
   slaStatus,
   sourceBadgeMeta,
 } from '@/hooks/useSptInbox';
+import { CopyableText } from '@/components/shared/CopyableText';
 import { cn } from '@/lib/utils';
 
 interface Props {
@@ -93,8 +94,7 @@ export function SptInboxTable({ leads, tab, isLoading, showOwner = false }: Prop
         return (
           <Card
             key={lead.id}
-            className="p-4 hover:shadow-md transition-shadow cursor-pointer group"
-            onClick={() => navigate(`/leads/${lead.id}?from=/spt-inbox`)}
+            className="p-4 hover:shadow-md transition-shadow group"
           >
             <div className="flex items-start gap-4">
               {/* SLA dot */}
@@ -106,7 +106,10 @@ export function SptInboxTable({ leads, tab, isLoading, showOwner = false }: Prop
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2 flex-wrap mb-1">
                   <h3 className="font-semibold text-sm truncate">
-                    {customer?.company_name || lead.title}
+                    <CopyableText
+                      text={customer?.company_name || lead.title}
+                      onClickText={() => navigate(`/leads/${lead.id}?from=/spt-inbox`)}
+                    />
                   </h3>
                   <Badge variant="outline" className={cn('text-xs', src.className)}>
                     {src.label}
@@ -133,14 +136,23 @@ export function SptInboxTable({ leads, tab, isLoading, showOwner = false }: Prop
                       {lead.total_qty > 0 && ` · ${lead.total_qty} qty`}
                     </span>
                   )}
-                  <span className="flex items-center gap-1">
-                    <Clock className="h-3 w-3" />
-                    {tab === 'awaiting' && lead.latest_quotation?.sent_at
-                      ? `Sent ${formatDistanceToNow(new Date(lead.latest_quotation.sent_at), { addSuffix: true })}`
-                      : `Handed off ${formatDistanceToNow(new Date(lead.handoff_at), { addSuffix: true })}`}
-                  </span>
+                  {(() => {
+                    const quoteTime = lead.latest_quotation?.sent_at || lead.latest_quotation?.created_at;
+                    const tooltipText = quoteTime
+                      ? `Quotation: ${formatISTDateTime(quoteTime)} (Handed off: ${formatISTDateTime(lead.handoff_at || lead.created_at)})`
+                      : `Handed off: ${formatISTDateTime(lead.handoff_at || lead.created_at)}`;
+                    const label = quoteTime
+                      ? (lead.latest_quotation?.sent_at ? `Sent ${formatISTRelativeTime(lead.latest_quotation.sent_at)}` : `Quoted ${formatISTRelativeTime(quoteTime)}`)
+                      : `Handed off ${formatISTRelativeTime(lead.handoff_at || lead.created_at)}`;
+                    return (
+                      <span className="flex items-center gap-1" title={tooltipText}>
+                        <Clock className="h-3 w-3" />
+                        {label}
+                      </span>
+                    );
+                  })()}
                   {customer?.contact_person && (
-                    <span className="truncate">{customer.contact_person}</span>
+                    <CopyableText text={customer.contact_person} className="truncate" />
                   )}
                 </div>
               </div>

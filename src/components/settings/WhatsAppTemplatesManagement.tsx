@@ -20,7 +20,8 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
-import { Plus, Pencil, Trash2, MessageSquare, Star, CheckCircle, XCircle } from 'lucide-react';
+import { Plus, Pencil, Trash2, Star, CheckCircle, XCircle } from 'lucide-react';
+import { WhatsAppIcon } from '@/components/icons/WhatsAppIcon';
 import {
   useWhatsAppTemplates,
   useCreateWhatsAppTemplate,
@@ -107,7 +108,7 @@ export function WhatsAppTemplatesManagement() {
         <CardHeader className="flex flex-row items-center justify-between">
           <div>
             <CardTitle className="flex items-center gap-2">
-              <MessageSquare className="h-5 w-5" />
+              <WhatsAppIcon className="h-5 w-5 text-green-600" />
               WhatsApp Templates
             </CardTitle>
             <CardDescription>
@@ -192,7 +193,7 @@ export function WhatsAppTemplatesManagement() {
             </Table>
           ) : (
             <div className="text-center py-8 text-muted-foreground">
-              <MessageSquare className="h-12 w-12 mx-auto mb-4 opacity-50" />
+              <WhatsAppIcon className="h-12 w-12 mx-auto mb-4 opacity-50 text-green-600" />
               <p>No WhatsApp templates configured</p>
               <p className="text-sm">Add a template to start using WhatsApp outreach</p>
               <Button onClick={handleAdd} className="mt-4">

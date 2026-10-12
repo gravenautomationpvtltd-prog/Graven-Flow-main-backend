@@ -9,9 +9,7 @@ import { Building2, Loader2 } from 'lucide-react';
 import { CompanyInfoStep } from '@/components/onboarding/CompanyInfoStep';
 import { AdminProfileStep } from '@/components/onboarding/AdminProfileStep';
 import { InviteTeamStep } from '@/components/onboarding/InviteTeamStep';
-import { ChoosePlanStep } from '@/components/onboarding/ChoosePlanStep';
 import { ConfirmationStep } from '@/components/onboarding/ConfirmationStep';
-import { RazorpayCheckout } from '@/components/payments/RazorpayCheckout';
 import { useTranslation } from '@/lib/i18n';
 
 export interface OnboardingData {
@@ -48,7 +46,6 @@ export default function Onboarding() {
     t('onboarding.step_company', 'Company Info'),
     t('onboarding.step_admin', 'Admin Profile'),
     t('onboarding.step_team', 'Invite Team'),
-    t('onboarding.step_plan', 'Choose Plan'),
     t('onboarding.step_confirm', 'Confirm'),
   ];
 
@@ -98,12 +95,7 @@ export default function Onboarding() {
 
       if (rpcError) throw rpcError;
 
-      if (data.plan !== 'trial') {
-        setCreatedTenantId(tenantId);
-        setShowPayment(true);
-        setSubmitting(false);
-        return;
-      }
+
 
       toast.success(t('onboarding.org_created', 'Organization created! Welcome.'));
       await new Promise(resolve => setTimeout(resolve, 500));
@@ -188,24 +180,7 @@ export default function Onboarding() {
       </div>
 
       <div className="flex-1 max-w-3xl mx-auto w-full px-6 py-8">
-        {showPayment && createdTenantId && data.plan !== 'trial' ? (
-          <div className="flex flex-col items-center justify-center gap-6 py-20">
-            <h2 className="text-2xl font-bold text-foreground">{t('onboarding.complete_payment', 'Complete Payment')}</h2>
-            <p className="text-muted-foreground text-center max-w-md">{t('onboarding.payment_desc', 'Your organization has been created. Complete payment to activate your subscription.')}</p>
-            <RazorpayCheckout
-              planType={data.plan as 'monthly' | 'half_yearly' | 'annual'}
-              userCount={1}
-              tenantId={createdTenantId}
-              onSuccess={() => { toast.success('Payment successful!'); window.location.href = '/dashboard'; }}
-              onCancel={() => { toast.info('You can pay later from Settings.'); window.location.href = '/dashboard'; }}
-              buttonLabel={t('onboarding.pay_activate', 'Pay & Activate')}
-              className="w-full max-w-xs"
-            />
-            <button onClick={() => { toast.info('You can subscribe later from Settings.'); window.location.href = '/dashboard'; }} className="text-sm text-muted-foreground underline hover:text-foreground">
-              {t('onboarding.skip_for_now', 'Skip for now')}
-            </button>
-          </div>
-        ) : submitting ? (
+        {submitting ? (
           <div className="flex flex-col items-center justify-center gap-4 py-20">
             <Loader2 className="h-8 w-8 animate-spin text-primary" />
             <p className="text-muted-foreground">{t('onboarding.setting_up', 'Setting up your organization...')}</p>
@@ -215,8 +190,7 @@ export default function Onboarding() {
             {step === 0 && <CompanyInfoStep data={data.company} onChange={(v) => updateData('company', v)} onNext={next} />}
             {step === 1 && <AdminProfileStep data={data.admin} onChange={(v) => updateData('admin', v)} onNext={next} onBack={prev} />}
             {step === 2 && <InviteTeamStep data={data.team} onChange={(v) => updateData('team', v)} onNext={next} onBack={prev} />}
-            {step === 3 && <ChoosePlanStep selected={data.plan} onChange={(v) => updateData('plan', v)} onNext={next} onBack={prev} />}
-            {step === 4 && <ConfirmationStep data={data} onBack={prev} onLaunch={handleLaunch} />}
+            {step === 3 && <ConfirmationStep data={data} onBack={prev} onLaunch={handleLaunch} />}
           </>
         )}
       </div>

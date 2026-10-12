@@ -88,12 +88,18 @@ function deriveDealStage(row: any, hoursSinceSent: number | null): DealStage {
   if (qStatus === 'accepted') return 'won';
   if (qStatus === 'rejected' || qStatus === 'expired') return 'lost';
 
-  // Has a quotation that's been sent
-  if (row.latest_quotation_id && row.latest_quotation_sent_at) {
-    if (qStatus === 'revised' || qStatus === 'negotiating') return 'negotiation';
-    // sent ≤ 48h: still negotiation; > 48h: needs follow up
-    if (hoursSinceSent !== null && hoursSinceSent > 48) return 'follow_up';
-    return 'negotiation';
+  // Has a quotation that's been sent or is active (pending, sent, negotiating, revised)
+  if (row.latest_quotation_id) {
+    if (row.latest_quotation_sent_at) {
+      if (qStatus === 'revised' || qStatus === 'negotiating') return 'negotiation';
+      // sent ≤ 48h: still negotiation; > 48h: needs follow up
+      if (hoursSinceSent !== null && hoursSinceSent > 48) return 'follow_up';
+      return 'negotiation';
+    }
+    // If quotation exists and is not draft (e.g. pending, sent, active)
+    if (qStatus && qStatus !== 'draft') {
+      return 'negotiation';
+    }
   }
 
   // Has items but no sent quotation → pricing
@@ -106,7 +112,7 @@ export function useSptInbox(tab: SptInboxTab | 'all') {
   const { user, isAdmin } = useAuth();
   const qc = useQueryClient();
 
-  // Realtime: refresh inbox when LQT qualifies, procurement resolves, or pricing flips
+  // Realtime: refresh inbox when LQT qualifies, procurement resolves, pricing flips, or quotations change
   useEffect(() => {
     if (!user?.id) return;
     let timer: ReturnType<typeof setTimeout> | null = null;
@@ -124,7 +130,7 @@ export function useSptInbox(tab: SptInboxTab | 'all') {
       .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'enquiry_items' }, debouncedInvalidate)
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'enquiry_items' }, debouncedInvalidate)
       .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'leads' }, debouncedInvalidate)
-      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'quotations' }, debouncedInvalidate)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'quotations' }, debouncedInvalidate)
       .subscribe();
 
     return () => {

@@ -1,8 +1,10 @@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Phone, MessageCircle, Mail, Loader2 } from 'lucide-react';
+import { Phone, Mail, Loader2 } from 'lucide-react';
+import { WhatsAppIcon } from '@/components/icons/WhatsAppIcon';
 import { useNavigate } from 'react-router-dom';
+import { CopyableText } from '@/components/shared/CopyableText';
 import { CreateRepeatEnquiryButton } from './CreateRepeatEnquiryButton';
 import type { CstCustomer } from '@/hooks/useCstCustomers';
 
@@ -59,13 +61,29 @@ export function CstCustomerTable({ customers, isLoading, emptyMessage = 'No cust
               : null;
 
             return (
-              <TableRow key={c.id} className="cursor-pointer hover:bg-muted/40" onClick={() => navigate(`/customers/${c.id}`)}>
+              <TableRow key={c.id} className="hover:bg-muted/40 transition-colors">
                 <TableCell>
-                  <div className="font-medium">{c.company_name}</div>
-                  {c.contact_person && <div className="text-xs text-muted-foreground">{c.contact_person}</div>}
+                  <CopyableText
+                    text={c.company_name}
+                    label="company name"
+                    textClassName="font-medium text-foreground"
+                    onClickText={() => navigate(`/customers/${c.id}`)}
+                  />
+                  {c.contact_person && (
+                    <div>
+                      <CopyableText
+                        text={c.contact_person}
+                        label="contact person"
+                        textClassName="text-xs text-muted-foreground"
+                      />
+                    </div>
+                  )}
                 </TableCell>
                 <TableCell className="hidden md:table-cell text-sm text-muted-foreground">
-                  {[c.city, c.state].filter(Boolean).join(', ') || '—'}
+                  <CopyableText
+                    text={[c.city, c.state].filter(Boolean).join(', ') || null}
+                    label="location"
+                  />
                 </TableCell>
                 <TableCell className="text-right font-medium">{formatINR(c.total_revenue)}</TableCell>
                 <TableCell className="text-center">{c.order_count}</TableCell>
@@ -74,7 +92,7 @@ export function CstCustomerTable({ customers, isLoading, emptyMessage = 'No cust
                   {formatDate(c.last_activity_date)}
                   {riskBadge}
                 </TableCell>
-                <TableCell className="text-right" onClick={(e) => e.stopPropagation()}>
+                <TableCell className="text-right">
                   <div className="flex items-center justify-end gap-1">
                     {c.phone && (
                       <Button size="icon" variant="ghost" className="h-8 w-8" asChild>
@@ -88,7 +106,7 @@ export function CstCustomerTable({ customers, isLoading, emptyMessage = 'No cust
                           target="_blank"
                           rel="noreferrer"
                         >
-                          <MessageCircle className="h-3.5 w-3.5" />
+                          <WhatsAppIcon className="h-3.5 w-3.5 text-green-600" />
                         </a>
                       </Button>
                     )}

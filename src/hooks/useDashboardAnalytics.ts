@@ -2,6 +2,7 @@ import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { startOfMonth, subMonths, format } from 'date-fns';
 import { useVertical } from '@/contexts/VerticalContext';
+import { fetchUserAssociatedLeadIds } from '@/lib/lead-persistence';
 
 export interface DateRange {
   from: Date | undefined;
@@ -56,7 +57,7 @@ export interface RevenueForecastData {
   historicalWinRate: number;
 }
 
-const STALE = 5 * 60 * 1000;
+const STALE = 60 * 1000;
 
 export function useDashboardAnalytics(dateRange?: DateRange, enabled: boolean = true, assignedTo?: string) {
   const { activeVerticalId } = useVertical();
@@ -65,24 +66,85 @@ export function useDashboardAnalytics(dateRange?: DateRange, enabled: boolean = 
     queryKey: ['dashboard-leads-consolidated', activeVerticalId, assignedTo ?? null, dateRange?.from?.toISOString(), dateRange?.to?.toISOString()],
     enabled,
     staleTime: STALE,
+    refetchOnWindowFocus: false,
+    refetchOnMount: false,
     queryFn: async () => {
       const now = new Date();
       const sixMonthsAgo = startOfMonth(subMonths(now, 5));
       const effectiveFrom = dateRange?.from && dateRange.from > sixMonthsAgo ? dateRange.from : sixMonthsAgo;
 
-      let query: any = supabase
-        .from('leads')
-        .select('source, status, created_at')
-        .gte('created_at', effectiveFrom.toISOString());
+      // 1. Try high-performance server-side aggregation RPC (fast, eliminates timeouts, full accuracy)
+      try {
+        const { data: rpcData, error: rpcError } = await (supabase as any).rpc('get_dashboard_lead_analytics', {
+          p_from: effectiveFrom.toISOString(),
+          p_to: dateRange?.to ? dateRange.to.toISOString() : null,
+          p_assigned_to: assignedTo ?? null,
+          p_vertical_id: activeVerticalId ?? null,
+        });
 
-      if (activeVerticalId) query = query.eq('vertical_id', activeVerticalId);
-      if (assignedTo) query = query.eq('assigned_to', assignedTo);
-      if (dateRange?.to) {
-        query = query.lte('created_at', dateRange.to.toISOString());
+        if (!rpcError && rpcData && Array.isArray(rpcData.leadTrends) && rpcData.leadTrends.length > 0) {
+          return {
+            leadTrends: rpcData.leadTrends as LeadTrendData[],
+            salesPipeline: (rpcData.salesPipeline || []) as PipelineData[],
+            leadSources: (rpcData.leadSources || []) as LeadSourceData[],
+          };
+        }
+      } catch (e) {
+        console.warn('[DashboardAnalytics] RPC failed, falling back to client query', e);
       }
 
-      const { data, error } = await query;
-      if (error) throw error;
+      let countQuery: any = supabase
+        .from('leads')
+        .select('id', { count: 'exact' })
+        .limit(1)
+        .is('deleted_at', null)
+        .gte('created_at', effectiveFrom.toISOString());
+
+      let associatedLeadIds: string[] = [];
+      if (assignedTo) {
+        associatedLeadIds = (await fetchUserAssociatedLeadIds(assignedTo)).slice(0, 50);
+      }
+
+      if (activeVerticalId) countQuery = countQuery.eq('vertical_id', activeVerticalId);
+      if (assignedTo) {
+        if (associatedLeadIds.length > 0 && associatedLeadIds.length <= 50) {
+          countQuery = countQuery.or(`assigned_to.eq.${assignedTo},id.in.(${associatedLeadIds.join(',')})`);
+        } else {
+          countQuery = countQuery.eq('assigned_to', assignedTo);
+        }
+      }
+      if (dateRange?.to) {
+        countQuery = countQuery.lte('created_at', dateRange.to.toISOString());
+      }
+
+      const { count: totalLeadsCount } = await countQuery;
+      const pageSize = 1000;
+      const numPages = Math.min(3, Math.ceil((totalLeadsCount || 0) / pageSize));
+
+      let data: any[] = [];
+      if (numPages > 0) {
+        const promises = Array.from({ length: numPages }, (_, i) => {
+          let q: any = supabase
+            .from('leads')
+            .select('source, status, created_at')
+            .is('deleted_at', null)
+            .gte('created_at', effectiveFrom.toISOString())
+            .range(i * pageSize, (i + 1) * pageSize - 1);
+
+          if (activeVerticalId) q = q.eq('vertical_id', activeVerticalId);
+          if (assignedTo) {
+            if (associatedLeadIds.length > 0 && associatedLeadIds.length <= 50) {
+              q = q.or(`assigned_to.eq.${assignedTo},id.in.(${associatedLeadIds.join(',')})`);
+            } else {
+              q = q.eq('assigned_to', assignedTo);
+            }
+          }
+          if (dateRange?.to) q = q.lte('created_at', dateRange.to.toISOString());
+          return q;
+        });
+        const responses = await Promise.all(promises);
+        data = responses.flatMap((r) => r.data || []);
+      }
 
       // --- Lead Trends ---
       const monthBuckets: Record<string, LeadTrendData> = {};
@@ -163,6 +225,8 @@ export function useDashboardAnalytics(dateRange?: DateRange, enabled: boolean = 
     queryKey: ['dashboard-procurement-status', activeVerticalId, dateRange?.from?.toISOString(), dateRange?.to?.toISOString()],
     enabled,
     staleTime: STALE,
+    refetchOnWindowFocus: false,
+    refetchOnMount: false,
     queryFn: async (): Promise<ProcurementData[]> => {
       let query: any = supabase.from('purchase_orders').select('status, grand_total');
       if (activeVerticalId) query = query.eq('vertical_id', activeVerticalId);
@@ -203,6 +267,8 @@ export function useDashboardAnalytics(dateRange?: DateRange, enabled: boolean = 
     queryKey: ['dashboard-revenue-forecast', activeVerticalId, assignedTo ?? null],
     enabled,
     staleTime: STALE,
+    refetchOnWindowFocus: false,
+    refetchOnMount: false,
     queryFn: async (): Promise<RevenueForecastData> => {
       const stageProbability: Record<string, { probability: number; label: string; color: string; order: number }> = {
         new: { probability: 10, label: 'New', color: 'hsl(var(--chart-1))', order: 1 },
@@ -214,31 +280,33 @@ export function useDashboardAnalytics(dateRange?: DateRange, enabled: boolean = 
 
       let activeQ: any = supabase.from('leads').select('status, estimated_value')
         .in('status', ['new', 'contacted', 'engaged', 'quoted', 'negotiation'] as any)
+        .is('deleted_at', null)
         .not('estimated_value', 'is', null);
-      let histQ: any = supabase.from('leads').select('status, won_at, lost_at')
-        .in('status', ['won', 'lost']);
+
+      let wonQ: any = supabase.from('leads').select('id', { count: 'exact' }).limit(1).eq('status', 'won').is('deleted_at', null);
+      let lostQ: any = supabase.from('leads').select('id', { count: 'exact' }).limit(1).eq('status', 'lost').is('deleted_at', null);
+
       if (activeVerticalId) {
         activeQ = activeQ.eq('vertical_id', activeVerticalId);
-        histQ = histQ.eq('vertical_id', activeVerticalId);
+        wonQ = wonQ.eq('vertical_id', activeVerticalId);
+        lostQ = lostQ.eq('vertical_id', activeVerticalId);
       }
       if (assignedTo) {
         activeQ = activeQ.eq('assigned_to', assignedTo);
-        histQ = histQ.eq('assigned_to', assignedTo);
+        wonQ = wonQ.eq('assigned_to', assignedTo);
+        lostQ = lostQ.eq('assigned_to', assignedTo);
       }
-      const [{ data: activeLeads, error: leadsError }, { data: historicalLeads, error: histError }] = await Promise.all([
-        activeQ, histQ,
+      const [{ data: activeLeads, error: leadsError }, { count: wonCount }, { count: lostCount }] = await Promise.all([
+        activeQ, wonQ, lostQ,
       ]);
 
       if (leadsError) throw leadsError;
-      if (histError) throw histError;
 
-      const wonCount = historicalLeads?.filter(l => l.status === 'won').length || 0;
-      const lostCount = historicalLeads?.filter(l => l.status === 'lost').length || 0;
-      const totalClosed = wonCount + lostCount;
-      const historicalWinRate = totalClosed > 0 ? (wonCount / totalClosed) * 100 : 25;
+      const totalClosed = (wonCount || 0) + (lostCount || 0);
+      const historicalWinRate = totalClosed > 0 ? ((wonCount || 0) / totalClosed) * 100 : 25;
 
       const stageAgg: Record<string, { count: number; rawValue: number }> = {};
-      activeLeads?.forEach((lead) => {
+      activeLeads?.forEach((lead: any) => {
         if (!stageAgg[lead.status]) stageAgg[lead.status] = { count: 0, rawValue: 0 };
         stageAgg[lead.status].count++;
         stageAgg[lead.status].rawValue += lead.estimated_value || 0;

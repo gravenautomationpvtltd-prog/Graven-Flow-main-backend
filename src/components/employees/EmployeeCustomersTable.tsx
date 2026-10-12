@@ -5,6 +5,7 @@ import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useEmployeeCustomers, DateRangeParam } from '@/hooks/useEmployeeStats';
 import { Building2, Mail, Phone } from 'lucide-react';
+import { CopyableText, CopyablePhone, CopyableEmail } from '@/components/shared/CopyableText';
 
 interface EmployeeCustomersTableProps {
   employeeId: string;
@@ -48,18 +49,22 @@ export function EmployeeCustomersTable({ employeeId, dateRange }: EmployeeCustom
         </TableHeader>
         <TableBody>
           {customers.map((customer) => (
-            <TableRow 
-              key={customer.id} 
-              className="cursor-pointer hover:bg-muted/50"
-              onClick={() => navigate(`/customers/${customer.id}`)}
-            >
+            <TableRow key={customer.id}>
               <TableCell>
                 <div className="flex items-center gap-2">
-                  <Building2 className="h-4 w-4 text-muted-foreground" />
+                  <Building2 className="h-4 w-4 text-muted-foreground shrink-0" />
                   <div>
-                    <div className="font-medium">{customer.company_name}</div>
+                    <div className="font-medium">
+                      <CopyableText
+                        text={customer.company_name}
+                        onClickText={() => navigate(`/customers/${customer.id}`)}
+                        textClassName="font-medium text-foreground"
+                      />
+                    </div>
                     {customer.contact_person && (
-                      <div className="text-sm text-muted-foreground">{customer.contact_person}</div>
+                      <div className="text-sm text-muted-foreground">
+                        <CopyableText text={customer.contact_person} />
+                      </div>
                     )}
                   </div>
                 </div>
@@ -67,24 +72,19 @@ export function EmployeeCustomersTable({ employeeId, dateRange }: EmployeeCustom
               <TableCell>
                 <div className="space-y-1">
                   {customer.email && (
-                    <div className="flex items-center gap-1 text-sm">
-                      <Mail className="h-3 w-3 text-muted-foreground" />
-                      {customer.email}
-                    </div>
+                    <CopyableEmail email={customer.email} />
                   )}
                   {customer.phone && (
-                    <div className="flex items-center gap-1 text-sm">
-                      <Phone className="h-3 w-3 text-muted-foreground" />
-                      {customer.phone}
-                    </div>
+                    <CopyablePhone phone={customer.phone} />
                   )}
                 </div>
               </TableCell>
               <TableCell>
-                {customer.city && customer.state 
-                  ? `${customer.city}, ${customer.state}`
-                  : customer.city || customer.state || '—'
-                }
+                {customer.city && customer.state ? (
+                  <CopyableText text={`${customer.city}, ${customer.state}`} />
+                ) : (customer.city || customer.state) ? (
+                  <CopyableText text={customer.city || customer.state || ''} />
+                ) : '—'}
               </TableCell>
               <TableCell>
                 <Badge variant="outline">

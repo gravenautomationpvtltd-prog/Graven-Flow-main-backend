@@ -19,6 +19,8 @@ export function useAttendanceStats(userId: string, month?: number, year?: number
   
   return useQuery({
     queryKey: ['attendance-stats', userId, targetMonth, targetYear],
+    staleTime: 60 * 1000,
+    refetchOnWindowFocus: false,
     queryFn: async (): Promise<AttendanceStats> => {
       const monthDate = new Date(targetYear, targetMonth, 1);
       const monthStart = startOfMonth(monthDate);

@@ -4,6 +4,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useEmployeeLeads, DateRangeParam } from '@/hooks/useEmployeeStats';
+import { CopyableText } from '@/components/shared/CopyableText';
 
 const statusColors: Record<string, string> = {
   new: 'bg-blue-500/10 text-blue-500',
@@ -59,13 +60,22 @@ export function EmployeeLeadsTable({ employeeId, dateRange }: EmployeeLeadsTable
         </TableHeader>
         <TableBody>
           {leads.map((lead) => (
-            <TableRow 
-              key={lead.id} 
-              className="cursor-pointer hover:bg-muted/50"
-              onClick={() => navigate(`/leads/${lead.id}`)}
-            >
-              <TableCell className="font-medium">{lead.title}</TableCell>
-              <TableCell>{lead.customer?.company_name || '—'}</TableCell>
+            <TableRow key={lead.id}>
+              <TableCell className="font-medium">
+                <CopyableText
+                  text={lead.title}
+                  onClickText={!lead.customer?.company_name ? () => navigate(`/leads/${lead.id}`) : undefined}
+                />
+              </TableCell>
+              <TableCell>
+                {lead.customer?.company_name ? (
+                  <CopyableText
+                    text={lead.customer.company_name}
+                    onClickText={() => navigate(`/leads/${lead.id}`)}
+                    textClassName="font-medium text-foreground"
+                  />
+                ) : '—'}
+              </TableCell>
               <TableCell>
                 <Badge className={statusColors[lead.status] || ''}>
                   {lead.status}

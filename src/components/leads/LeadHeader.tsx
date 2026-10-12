@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { MoreVertical, Trophy, XCircle } from 'lucide-react';
+import { MoreVertical, Trophy, XCircle, Pencil } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import {
@@ -26,7 +26,7 @@ import type { LeadWithCustomer } from '@/hooks/useLeads';
 import type { Database } from '@/integrations/supabase/types';
 import { toast } from 'sonner';
 import { useAuth } from '@/hooks/useAuth';
-import { formatDistanceToNow } from 'date-fns';
+import { formatISTDateTime, formatISTRelativeTime } from '@/lib/date-utils';
 import { DoubleConfirmDeleteDialog } from '@/components/ui/double-confirm-delete-dialog';
 import { useTranslation } from '@/lib/i18n';
 
@@ -150,6 +150,16 @@ export function LeadHeader({ lead }: LeadHeaderProps) {
             {t('leads.mark_won', 'Mark Won')}
           </Button>
 
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setEditDialogOpen(true)}
+            className="gap-1.5"
+          >
+            <Pencil className="h-4 w-4" />
+            {t('leads.edit_lead', 'Edit')}
+          </Button>
+
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button variant="ghost" size="icon" className="h-8 w-8">
@@ -183,8 +193,8 @@ export function LeadHeader({ lead }: LeadHeaderProps) {
               <LeadSourceBadge source={lead.source} />
             </div>
             <div className="flex items-center gap-4 text-sm text-muted-foreground">
-              <span>
-                {t('leads.created', 'Created')} {formatDistanceToNow(new Date(lead.created_at), { addSuffix: true })}
+              <span title={formatISTDateTime(lead.created_at)}>
+                {t('leads.created', 'Created')} {formatISTRelativeTime(lead.created_at)} ({formatISTDateTime(lead.created_at)})
               </span>
               <span className="text-border">•</span>
               <span>{t('leads.owner', 'Owner')}: {ownerName}</span>

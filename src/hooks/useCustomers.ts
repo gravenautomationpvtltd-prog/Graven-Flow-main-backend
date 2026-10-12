@@ -37,33 +37,10 @@ export function useCustomers(filters?: CustomerFilters | string) {
       const from = page * pageSize;
       const to = from + pageSize - 1;
 
-      // First get total count (exclude soft-deleted)
-      let countQuery = supabase
-        .from('customers')
-        .select('*', { count: 'exact', head: true })
-        .is('deleted_at', null);
-
-      // Filter by assigned sales person if provided
-      if (normalizedFilters.assignedSalesId) {
-        countQuery = countQuery.eq('assigned_sales_id', normalizedFilters.assignedSalesId);
-      }
-
-      if (normalizedFilters.search) {
-        countQuery = countQuery.or(
-          `company_name.ilike.%${normalizedFilters.search}%,contact_person.ilike.%${normalizedFilters.search}%,phone.ilike.%${normalizedFilters.search}%`
-        );
-      }
-
-      if (normalizedFilters.segment && normalizedFilters.segment !== 'all') {
-        countQuery = countQuery.eq('segment', normalizedFilters.segment as any);
-      }
-
-      const { count } = await countQuery;
-
-      // Build data query (exclude soft-deleted, show newest first)
+      // Build single combined query for data + exact total count (exclude soft-deleted)
       let query = supabase
         .from('customers')
-        .select('*, assigned_sales:profiles!assigned_sales_id(full_name)')
+        .select('*, assigned_sales:profiles!assigned_sales_id(full_name)', { count: 'exact' })
         .is('deleted_at', null)
         .order('created_at', { ascending: false });
 
@@ -85,7 +62,7 @@ export function useCustomers(filters?: CustomerFilters | string) {
       // Apply pagination
       query = query.range(from, to);
 
-      const { data, error } = await query;
+      const { data, count, error } = await query;
       if (error) throw error;
       
       return {
@@ -113,28 +90,10 @@ export function useInfiniteCustomers(filters?: InfiniteCustomerFilters) {
       const from = pageParam * pageSize;
       const to = from + pageSize - 1;
 
-      // Get total count for the first page (exclude soft-deleted)
-      let countQuery = supabase
-        .from('customers')
-        .select('*', { count: 'exact', head: true })
-        .is('deleted_at', null);
-
-      if (normalizedFilters.assignedSalesId) {
-        countQuery = countQuery.eq('assigned_sales_id', normalizedFilters.assignedSalesId);
-      }
-
-      if (normalizedFilters.search) {
-        countQuery = countQuery.or(
-          `company_name.ilike.%${normalizedFilters.search}%,contact_person.ilike.%${normalizedFilters.search}%,phone.ilike.%${normalizedFilters.search}%`
-        );
-      }
-
-      const { count } = await countQuery;
-
-      // Build data query (exclude soft-deleted, show newest first)
+      // Build single combined query for data + exact count
       let query = supabase
         .from('customers')
-        .select('*, assigned_sales:profiles!assigned_sales_id(full_name)')
+        .select('*, assigned_sales:profiles!assigned_sales_id(full_name)', { count: 'exact' })
         .is('deleted_at', null)
         .order('created_at', { ascending: false });
 
@@ -150,7 +109,7 @@ export function useInfiniteCustomers(filters?: InfiniteCustomerFilters) {
 
       query = query.range(from, to);
 
-      const { data, error } = await query;
+      const { data, count, error } = await query;
       if (error) throw error;
 
       return {

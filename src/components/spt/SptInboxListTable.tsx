@@ -1,5 +1,5 @@
 import { useNavigate } from 'react-router-dom';
-import { formatDistanceToNow } from 'date-fns';
+import { formatISTDateTime, formatISTRelativeTime } from '@/lib/date-utils';
 import {
   Table,
   TableBody,
@@ -16,6 +16,7 @@ import { Card } from '@/components/ui/card';
 import { PaginationControls } from '@/components/ui/pagination-controls';
 import { Tooltip, TooltipContent, TooltipTrigger, TooltipProvider } from '@/components/ui/tooltip';
 import { ArrowRight, Hourglass, Inbox, RotateCcw, FileText, Phone, ShoppingCart } from 'lucide-react';
+import { CopyableText } from '@/components/shared/CopyableText';
 import {
   type SptInboxLead,
   type DealStage,
@@ -155,17 +156,16 @@ export function SptInboxListTable({
               const ActionIcon = action.icon;
               const seg = c?.segment ? getSegmentConfig(c.segment) : null;
 
+              const quoteTime = lead.latest_quotation?.sent_at || lead.latest_quotation?.created_at;
               const ageBase =
-                (lead.deal_stage === 'follow_up' || lead.deal_stage === 'negotiation') &&
-                lead.latest_quotation?.sent_at
-                  ? new Date(lead.latest_quotation.sent_at)
-                  : new Date(lead.handoff_at);
+                (lead.deal_stage === 'follow_up' || lead.deal_stage === 'negotiation' || lead.latest_quotation) && quoteTime
+                  ? new Date(quoteTime)
+                  : new Date(lead.handoff_at || lead.created_at);
 
               return (
                 <TableRow
                   key={lead.id}
-                  className="cursor-pointer hover:bg-muted/50"
-                  onClick={() => navigate(`/leads/${lead.id}?from=/spt-inbox`)}
+                  className="hover:bg-muted/40 transition-colors"
                 >
                   <TableCell>
                     <span
@@ -178,9 +178,13 @@ export function SptInboxListTable({
                   <TableCell className="max-w-[320px]">
                     <div className="flex flex-col gap-0.5">
                       <div className="flex items-center gap-2 flex-wrap">
-                        <span className="font-medium text-sm truncate">
-                          {c?.company_name || lead.title}
-                        </span>
+                        <CopyableText
+                          text={c?.company_name || lead.title}
+                          label="company name"
+                          onClickText={() => navigate(`/leads/${lead.id}?from=/spt-inbox`)}
+                          textClassName="font-medium text-sm text-foreground"
+                          truncate
+                        />
                         {seg && (
                           <Badge
                             variant="outline"
@@ -191,9 +195,12 @@ export function SptInboxListTable({
                         )}
                       </div>
                       {c?.contact_person && (
-                        <span className="text-xs text-muted-foreground truncate">
-                          {c.contact_person}
-                        </span>
+                        <CopyableText
+                          text={c.contact_person}
+                          label="contact person"
+                          textClassName="text-xs text-muted-foreground"
+                          truncate
+                        />
                       )}
                     </div>
                   </TableCell>
@@ -210,8 +217,15 @@ export function SptInboxListTable({
                     </span>
                   </TableCell>
 
-                  <TableCell className="text-xs text-muted-foreground whitespace-nowrap">
-                    {formatDistanceToNow(ageBase, { addSuffix: true })}
+                  <TableCell
+                    className="text-xs text-muted-foreground whitespace-nowrap"
+                    title={
+                      quoteTime
+                        ? `Quotation: ${formatISTDateTime(quoteTime)} (Lead Handed Off: ${formatISTDateTime(lead.handoff_at || lead.created_at)})`
+                        : `Handed Off: ${formatISTDateTime(lead.handoff_at || lead.created_at)}`
+                    }
+                  >
+                    {formatISTRelativeTime(ageBase)}
                   </TableCell>
 
                   {showOwner && (
@@ -223,7 +237,13 @@ export function SptInboxListTable({
                               {getInitials(lead.owner_name)}
                             </AvatarFallback>
                           </Avatar>
-                          <span className="text-xs">{firstName(lead.owner_name)}</span>
+                          <CopyableText
+                            text={lead.owner_name}
+                            label="owner name"
+                            textClassName="text-xs"
+                          >
+                            {firstName(lead.owner_name)}
+                          </CopyableText>
                         </div>
                       ) : (
                         <span className="text-xs text-muted-foreground">Unassigned</span>

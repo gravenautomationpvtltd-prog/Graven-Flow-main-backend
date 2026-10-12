@@ -5,6 +5,8 @@ import type { Database } from '@/integrations/supabase/types';
 import { logActivity } from '@/lib/activity-logger';
 import { ensureFreshSession, isPermissionError } from '@/utils/sessionGuard';
 import { useVertical } from '@/contexts/VerticalContext';
+import { invalidateDashboardData } from '@/lib/dashboard-invalidation';
+import { fetchUserAssociatedLeadIds } from '@/lib/lead-persistence';
 
 /**
  * Resolves the current user's tenant_id directly from tenant_users (live, not cached).
@@ -41,57 +43,94 @@ const VALID_LEAD_SOURCES = new Set([
   'indiamart','justdial','website','whatsapp','email','referral','manual','tradeindia','cro_followup',
 ]);
 
+// In-flight deduplication cache to prevent parallel identical submissions
+const inFlightLeadPromises = new Map<string, Promise<any>>();
+
 export async function safeInsertLead(
   payload: Record<string, any>,
   _options: { select?: string } = {}
 ): Promise<any> {
-  await ensureFreshSession();
-  const tenantId = payload.tenant_id || (await resolveActiveTenantId());
+  const normalizedTitle = (payload.title || '').trim().toLowerCase();
+  const normalizedSource = typeof payload.source === 'string' ? payload.source.toLowerCase() : 'manual';
+  const customerId = payload.customer_id || '';
+  const idempotencyKey = payload.idempotency_key || '';
 
-  // Pre-generate the lead id client-side so we never depend on reading the row
-  // back under RLS (the lead may be auto-reassigned by triggers immediately).
-  const leadId: string =
-    payload.id ||
-    (typeof crypto !== 'undefined' && 'randomUUID' in crypto
-      ? (crypto as any).randomUUID()
-      : `${Date.now()}-${Math.random().toString(16).slice(2)}`);
+  // Dedup key: if same user/client initiates parallel identical submission
+  const dedupKey = idempotencyKey 
+    ? `idem:${idempotencyKey}` 
+    : `lead:${customerId}:${normalizedTitle}:${normalizedSource}`;
 
-  // Normalise source to a valid enum value (safety net — backend also guards)
-  const rawSource = typeof payload.source === 'string' ? payload.source.toLowerCase() : '';
-  const safeSource = VALID_LEAD_SOURCES.has(rawSource) ? rawSource : 'manual';
+  if (inFlightLeadPromises.has(dedupKey)) {
+    return inFlightLeadPromises.get(dedupKey)!;
+  }
 
-  const rpcPayload = { ...payload, id: leadId, tenant_id: tenantId, source: safeSource };
+  const executionPromise = (async () => {
+    await ensureFreshSession();
+    const tenantId = payload.tenant_id || (await resolveActiveTenantId());
 
-  const callRpc = () =>
-    (supabase as any).rpc('create_lead_secure', { payload: rpcPayload });
+    // Pre-generate the lead id client-side so we never depend on reading the row
+    // back under RLS (the lead may be auto-reassigned by triggers immediately).
+    const leadId: string =
+      payload.id ||
+      (typeof crypto !== 'undefined' && 'randomUUID' in crypto
+        ? (crypto as any).randomUUID()
+        : `${Date.now()}-${Math.random().toString(16).slice(2)}`);
 
-  let { data, error } = await callRpc();
+    // Normalise source to a valid enum value (safety net — backend also guards)
+    const safeSource = VALID_LEAD_SOURCES.has(normalizedSource) ? normalizedSource : 'manual';
 
-  if (error && isPermissionError(error)) {
-    try {
-      await supabase.auth.refreshSession();
-      await ensureFreshSession();
-    } catch {
-      /* fall through */
+    const rpcPayload = { 
+      ...payload, 
+      id: leadId, 
+      tenant_id: tenantId, 
+      source: safeSource,
+      idempotency_key: idempotencyKey || undefined,
+    };
+
+    const callRpc = () =>
+      (supabase as any).rpc('create_lead_secure', { payload: rpcPayload });
+
+    let { data, error } = await callRpc();
+
+    if (error && isPermissionError(error)) {
+      try {
+        await supabase.auth.refreshSession();
+        await ensureFreshSession();
+      } catch {
+        /* fall through */
+      }
+      ({ data, error } = await callRpc());
     }
-    ({ data, error } = await callRpc());
-  }
 
-  if (error) {
-    // Surface the exact failure cause to the console so we can diagnose
-    // generic "Couldn't create the lead" toasts without guessing.
-    // eslint-disable-next-line no-console
-    console.error('[safeInsertLead] create_lead_secure failed:', {
-      code: (error as any)?.code,
-      message: (error as any)?.message,
-      details: (error as any)?.details,
-      hint: (error as any)?.hint,
-      payload: rpcPayload,
-    });
-    throw error;
+    if (error) {
+      // Surface the exact failure cause to the console so we can diagnose
+      // generic "Couldn't create the lead" toasts without guessing.
+      // eslint-disable-next-line no-console
+      console.error('[safeInsertLead] create_lead_secure failed:', {
+        code: (error as any)?.code,
+        message: (error as any)?.message,
+        details: (error as any)?.details,
+        hint: (error as any)?.hint,
+        payload: rpcPayload,
+      });
+      throw error;
+    }
+    const finalLeadId = (data as string) || leadId;
+    return { ...rpcPayload, id: finalLeadId };
+  })();
+
+  inFlightLeadPromises.set(dedupKey, executionPromise);
+
+  try {
+    return await executionPromise;
+  } finally {
+    // Keep in cache for 2 seconds to absorb rapid double/triple clicks
+    setTimeout(() => {
+      inFlightLeadPromises.delete(dedupKey);
+    }, 2000);
   }
-  return { ...rpcPayload, id: (data as string) || leadId };
 }
+
 
 type Lead = Database['public']['Tables']['leads']['Row'];
 type LeadInsert = Database['public']['Tables']['leads']['Insert'];
@@ -147,7 +186,8 @@ export interface LeadsResult {
 export function useLeads(filters?: LeadFilters) {
   const { activeVerticalId } = useVertical();
   return useQuery({
-    staleTime: 2 * 60 * 1000,
+    staleTime: 30 * 1000,
+    refetchInterval: false,
     queryKey: ['leads', filters, activeVerticalId],
     queryFn: async (): Promise<LeadsResult> => {
       const page = filters?.page ?? 0;
@@ -168,6 +208,13 @@ export function useLeads(filters?: LeadFilters) {
           
           matchingCustomerIds = matchingCustomers?.map(c => c.id) ?? [];
         }
+      }
+
+      // If filtering by assignedTo, find any leads associated with this user
+      // (via quotations, qualifications, or assignment history) so leads never disappear
+      let associatedLeadIds: string[] = [];
+      if (filters?.assignedTo) {
+        associatedLeadIds = (await fetchUserAssociatedLeadIds(filters.assignedTo)).slice(0, 50);
       }
 
       // Helper function to apply filters to a query
@@ -199,7 +246,11 @@ export function useLeads(filters?: LeadFilters) {
         }
 
         if (filters?.assignedTo) {
-          query = query.eq('assigned_to', filters.assignedTo);
+          if (associatedLeadIds.length > 0 && associatedLeadIds.length <= 50) {
+            query = query.or(`assigned_to.eq.${filters.assignedTo},id.in.(${associatedLeadIds.join(',')})`);
+          } else {
+            query = query.eq('assigned_to', filters.assignedTo);
+          }
         }
         if (filters?.customerId) {
           query = query.eq('customer_id', filters.customerId);
@@ -245,22 +296,14 @@ export function useLeads(filters?: LeadFilters) {
         return query;
       };
 
-      // First get total count (exclude soft-deleted)
-      let countQuery = supabase
-        .from('leads')
-        .select('*', { count: 'exact', head: true })
-        .is('deleted_at', null);
-      countQuery = applyFilters(countQuery);
-      const { count } = await countQuery;
-
-      // Build data query (exclude soft-deleted)
+      // Build single combined query for data + exact total count (exclude soft-deleted)
       let query = supabase
         .from('leads')
         .select(`
           *,
-          customer:customers(*),
-          assigned_user:profiles!leads_assigned_to_fkey(*)
-        `)
+          customer:customers(id, company_name, contact_person, phone, email, assigned_sales_id),
+          assigned_user:profiles!leads_assigned_to_fkey(id, full_name, email, avatar_url)
+        `, { count: 'exact' })
         .is('deleted_at', null);
       query = applyFilters(query);
 
@@ -291,7 +334,7 @@ export function useLeads(filters?: LeadFilters) {
       // Apply pagination
       query = query.range(from, to);
 
-      const { data, error } = await query;
+      const { data, count, error } = await query;
 
       if (error) throw error;
       return {
@@ -329,6 +372,7 @@ export function useCreateLead() {
       return await safeInsertLead(lead as Record<string, any>);
     },
     onSuccess: async (data) => {
+      invalidateDashboardData(queryClient);
       queryClient.invalidateQueries({ queryKey: ['leads'] });
 
       // Dual-role aware toast: if the creator has the LQT (cro) role,
@@ -417,6 +461,7 @@ export function useUpdateLead() {
       return data;
     },
     onSuccess: (data, variables) => {
+      invalidateDashboardData(queryClient);
       queryClient.invalidateQueries({ queryKey: ['leads'] });
       queryClient.invalidateQueries({ queryKey: ['lead', data.id] });
       const wasReassignment = 'assigned_to' in (variables as object);
@@ -461,6 +506,7 @@ export function useDeleteLead() {
       return id;
     },
     onSuccess: (id) => {
+      invalidateDashboardData(queryClient);
       queryClient.invalidateQueries({ queryKey: ['leads'] });
       queryClient.invalidateQueries({ queryKey: ['lead', id] });
       queryClient.invalidateQueries({ queryKey: ['deleted-leads'] });

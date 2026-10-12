@@ -9,6 +9,7 @@ import { QuotationBuilder, type PrePopulatedItem } from './QuotationBuilder';
 import type { QuotationItem } from '@/hooks/useQuotations';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { useQuotation } from '@/hooks/useQuotations';
+import { useLeadDraftQuotation } from '@/hooks/useDraftQuotation';
 import { Loader2 } from 'lucide-react';
 
 interface CreateQuotationDialogProps {
@@ -40,6 +41,10 @@ export function CreateQuotationDialog({
 }: CreateQuotationDialogProps) {
   // Fetch existing draft data if provided
   const { data: existingDraft, isLoading: isDraftLoading } = useQuotation(existingDraftId);
+  // Auto-detect existing draft on this lead if no draftId was explicitly passed and not duplicating
+  const { data: leadDraft, isLoading: isLeadDraftLoading } = useLeadDraftQuotation(
+    open && !existingDraftId && !duplicateFromId ? leadId : undefined
+  );
   // Fetch source quotation when duplicating
   const { data: duplicateSource, isLoading: isSourceLoading } = useQuotation(duplicateFromId);
 
@@ -48,8 +53,10 @@ export function CreateQuotationDialog({
   };
 
   // Determine if we're continuing a draft
-  const isContinuingDraft = !!existingDraftId && !!existingDraft;
-  const isLoadingSource = (!!existingDraftId && isDraftLoading) || (!!duplicateFromId && isSourceLoading);
+  const activeDraft = existingDraft || leadDraft;
+  const activeDraftId = existingDraftId || (!duplicateFromId ? leadDraft?.id : undefined);
+  const isContinuingDraft = !!activeDraftId && !!activeDraft;
+  const isLoadingSource = (!!existingDraftId && isDraftLoading) || (!!duplicateFromId && isSourceLoading) || (!existingDraftId && !duplicateFromId && !!leadId && isLeadDraftLoading);
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -69,15 +76,15 @@ export function CreateQuotationDialog({
             </div>
           ) : (
             <QuotationBuilder
-              key={`${duplicateFromId || existingDraftId || 'new'}-${customerId || ''}-${itemsOverride?.length ?? 0}`}
+              key={`${duplicateFromId || activeDraftId || 'new'}-${customerId || ''}-${itemsOverride?.length ?? 0}`}
               leadId={leadId}
               customerId={customerId}
               customerName={customerName}
               customerPhone={customerPhone}
               customerEmail={customerEmail}
               prePopulatedItems={prePopulatedItems}
-              existingQuotation={isContinuingDraft ? existingDraft : undefined}
-              existingDraftId={existingDraftId}
+              existingQuotation={isContinuingDraft ? activeDraft : undefined}
+              existingDraftId={activeDraftId}
               duplicateSource={duplicateFromId ? duplicateSource : undefined}
               itemsOverride={itemsOverride}
               onSuccess={handleSuccess}

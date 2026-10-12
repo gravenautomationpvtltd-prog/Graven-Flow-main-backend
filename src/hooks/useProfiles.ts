@@ -7,6 +7,7 @@ type Profile = Database['public']['Tables']['profiles']['Row'];
 export function useProfiles() {
   return useQuery({
     queryKey: ['profiles'],
+    staleTime: 5 * 60 * 1000,
     queryFn: async () => {
       const { data, error } = await supabase
         .from('profiles')

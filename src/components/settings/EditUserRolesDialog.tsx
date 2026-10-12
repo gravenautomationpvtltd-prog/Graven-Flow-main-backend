@@ -121,7 +121,7 @@ const roleFeatures: Record<AppRole, string[]> = {
   warehouse: ["Inventory", "Stock Control", "Dispatch", "Returns"],
   qc: ["Receive Material", "Quality Check", "Held Stock", "Release for Dispatch", "Stock Ledger"],
   hr: ["Attendance", "Payroll", "Leave Management", "Employee Records"],
-  platform_admin: ["Platform Backend", "Tenant Management", "Subscriptions", "Analytics"],
+  platform_admin: ["Platform Backend", "Tenant Management", "System Admin", "Analytics"],
 };
 
 interface EditUserRolesDialogProps {

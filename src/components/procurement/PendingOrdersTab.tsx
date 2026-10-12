@@ -23,6 +23,7 @@ import {
 } from '@/components/ui/dialog';
 import { useSalesOrders, useOrderDocuments, useUpdateSalesOrder, SalesOrderWithDetails } from '@/hooks/useSalesOrders';
 import { format } from 'date-fns';
+import { OrderDocumentsList } from '@/components/orders/OrderDocumentsList';
 import { useNavigate } from 'react-router-dom';
 import { downloadFile } from '@/lib/download-utils';
 
@@ -124,7 +125,16 @@ export function PendingOrdersTab() {
             <TableBody>
               {filteredOrders.map((order) => (
                 <TableRow key={order.id}>
-                  <TableCell className="font-medium">{order.order_number}</TableCell>
+                  <TableCell className="font-medium">
+                    <div className="flex items-center gap-1.5">
+                      <span>{order.order_number}</span>
+                      {order.documents?.some((d) => d.document_type === 'customer_po') && (
+                        <Badge className="bg-blue-600 hover:bg-blue-700 text-white text-[10px] px-1.5 py-0 h-4">
+                          PO
+                        </Badge>
+                      )}
+                    </div>
+                  </TableCell>
                   <TableCell>
                     <div>
                       <p className="font-medium">{order.customer?.company_name}</p>
@@ -342,32 +352,7 @@ function ViewOrderDialog({
           {/* Documents */}
           <div className="space-y-2">
             <p className="text-sm font-medium">Documents</p>
-            <div className="flex flex-wrap gap-2">
-              {customerPO && (
-                <Button 
-                  variant="outline" 
-                  size="sm" 
-                  className="gap-2"
-                  onClick={() => downloadFile(customerPO.file_url, customerPO.file_name)}
-                >
-                  <FileText className="h-4 w-4 text-blue-600" />
-                  Customer PO
-                  <Download className="h-3 w-3" />
-                </Button>
-              )}
-              {paymentReceipt && (
-                <Button 
-                  variant="outline" 
-                  size="sm" 
-                  className="gap-2"
-                  onClick={() => downloadFile(paymentReceipt.file_url, paymentReceipt.file_name)}
-                >
-                  <Receipt className="h-4 w-4 text-green-600" />
-                  Payment Receipt
-                  <Download className="h-3 w-3" />
-                </Button>
-              )}
-            </div>
+            <OrderDocumentsList salesOrderId={order.id} documents={documents} compact />
           </div>
 
           {/* Notes */}

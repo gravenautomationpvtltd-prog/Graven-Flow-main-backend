@@ -25,16 +25,25 @@ export function useDashboardScope() {
     if (typeof window === 'undefined') return 'team';
     const stored = window.localStorage.getItem(STORAGE_KEY);
     // Admins (super_admin/COO) don't personally own leads — always default to team
-    // and ignore a stale 'personal' preference from a previous session.
-    if (isAdmin && stored !== 'team') return 'team';
+    if ((isAdmin) && stored !== 'team') {
+      try { window.localStorage.setItem(STORAGE_KEY, 'team'); } catch (_) {}
+      return 'team';
+    }
     if (stored === 'personal' || stored === 'team') return stored;
     return 'team';
   });
 
   // Re-sync when role flags resolve after first render
   useEffect(() => {
-    if (lockedTo && mode !== lockedTo) setModeState(lockedTo);
-    else if (isAdmin && mode === 'personal') setModeState('team');
+    if (lockedTo && mode !== lockedTo) {
+      setModeState(lockedTo);
+    } else if (isAdmin) {
+      const stored = window.localStorage.getItem(STORAGE_KEY);
+      if (!stored || stored === 'personal') {
+        setModeState('team');
+        try { window.localStorage.setItem(STORAGE_KEY, 'team'); } catch (_) {}
+      }
+    }
   }, [lockedTo, mode, isAdmin]);
 
   const setMode = useCallback(

@@ -21,7 +21,10 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { Phone, Mail, Building2, MapPin, User, Clock, MessageSquare, Plus, Search, Loader2, CheckCircle, CalendarIcon, RotateCcw, Star, AlarmClock, RefreshCw } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+import { supabase } from '@/integrations/supabase/client';
+import { CopyableText, CopyablePhone, CopyableEmail } from '@/components/shared/CopyableText';
+import { Phone, Mail, Building2, MapPin, User, Clock, MessageSquare, Plus, Search, Loader2, CheckCircle, CalendarIcon, RotateCcw, Star, AlarmClock, RefreshCw, ExternalLink } from 'lucide-react';
 import { useCROAssignments, useUpdateCROAssignment, useUpdateCustomerSegment, type CROAssignment } from '@/hooks/useCROAssignments';
 import { useAuth } from '@/hooks/useAuth';
 import { useCreateLead } from '@/hooks/useLeads';
@@ -61,6 +64,8 @@ export default function CRODashboard() {
   const [enquirySource, setEnquirySource] = useState<string>('cro_followup');
   const [enquiryEstimatedValue, setEnquiryEstimatedValue] = useState('');
   const [enquiryExpectedCloseDate, setEnquiryExpectedCloseDate] = useState<Date>();
+  const [isCreatingEnquiry, setIsCreatingEnquiry] = useState(false);
+  const isCreatingEnquiryRef = useRef(false);
   const [recentlyActedIds, setRecentlyActedIds] = useState<Set<string>>(new Set());
 
   const markActed = useCallback((id: string) => {
@@ -73,6 +78,35 @@ export default function CRODashboard() {
       });
     }, 13000);
   }, []);
+
+  const navigate = useNavigate();
+  const [openingAssignmentId, setOpeningAssignmentId] = useState<string | null>(null);
+
+  const handleOpenLead = useCallback(async (assignment: CROAssignment) => {
+    setOpeningAssignmentId(assignment.id);
+    try {
+      const { data: leads, error } = await supabase
+        .from('leads')
+        .select('id')
+        .eq('customer_id', assignment.customer_id)
+        .is('deleted_at', null)
+        .order('created_at', { ascending: false })
+        .limit(1);
+
+      if (error) throw error;
+
+      if (leads && leads.length > 0) {
+        navigate(`/leads/${leads[0].id}?from=/cro-dashboard`);
+      } else {
+        toast.info(`No lead found for ${assignment.customer.company_name}. Click "Add Enquiry" to create one.`);
+      }
+    } catch (err) {
+      console.error('Failed to open lead:', err);
+      toast.error('Failed to open lead');
+    } finally {
+      setOpeningAssignmentId(null);
+    }
+  }, [navigate]);
 
   const now = new Date();
 
@@ -229,9 +263,15 @@ export default function CRODashboard() {
   };
 
   const handleCreateEnquiry = async () => {
-    if (!enquiryDialog || !enquiryTitle.trim()) return;
+    if (!enquiryDialog || !enquiryTitle.trim() || isCreatingEnquiryRef.current) return;
+    isCreatingEnquiryRef.current = true;
+    setIsCreatingEnquiry(true);
 
     try {
+      const idempotencyKey = typeof crypto !== 'undefined' && 'randomUUID' in crypto 
+        ? crypto.randomUUID() 
+        : String(Date.now());
+
       const newLead = await createLead.mutateAsync({
         title: enquiryTitle,
         source: enquirySource as any,
@@ -240,7 +280,8 @@ export default function CRODashboard() {
         assigned_to: enquiryDialog.customer.assigned_sales_id || undefined,
         estimated_value: enquiryEstimatedValue ? Number(enquiryEstimatedValue) : 0,
         expected_close_date: enquiryExpectedCloseDate ? format(enquiryExpectedCloseDate, 'yyyy-MM-dd') : undefined,
-      });
+        idempotency_key: idempotencyKey,
+      } as any);
 
       logActivity({
         action: 'create',
@@ -266,6 +307,9 @@ export default function CRODashboard() {
       setEnquiryExpectedCloseDate(undefined);
     } catch (error) {
       console.error('Failed to create enquiry:', error);
+    } finally {
+      isCreatingEnquiryRef.current = false;
+      setIsCreatingEnquiry(false);
     }
   };
 
@@ -457,11 +501,21 @@ export default function CRODashboard() {
                   <CardHeader className="pb-3">
                     <div className="flex items-start justify-between gap-2">
                       <div className="space-y-1 min-w-0 flex-1">
-                        <CardTitle className="text-base truncate">{customer.company_name}</CardTitle>
+                        <CardTitle className="text-base truncate">
+                          <CopyableText
+                            text={customer.company_name}
+                            label="company name"
+                            textClassName="text-base font-semibold"
+                          />
+                        </CardTitle>
                         {customer.contact_person && (
                           <CardDescription className="flex items-center gap-1">
-                            <User className="h-3 w-3" />
-                            {customer.contact_person}
+                            <User className="h-3 w-3 shrink-0" />
+                            <CopyableText
+                              text={customer.contact_person}
+                              label="contact person"
+                              textClassName="text-xs text-muted-foreground"
+                            />
                           </CardDescription>
                         )}
                       </div>
@@ -478,25 +532,35 @@ export default function CRODashboard() {
                   <CardContent className="flex-1 space-y-3">
                     <div className="space-y-1.5 text-sm">
                       <div className="flex items-center gap-2 text-muted-foreground">
-                        <Phone className="h-3.5 w-3.5" />
-                        <a href={`tel:${customer.phone}`} className="hover:text-foreground">{customer.phone}</a>
+                        <Phone className="h-3.5 w-3.5 shrink-0" />
+                        <CopyablePhone phone={customer.phone} />
                       </div>
                       {customer.email && (
                         <div className="flex items-center gap-2 text-muted-foreground">
-                          <Mail className="h-3.5 w-3.5" />
-                          <span className="truncate">{customer.email}</span>
+                          <Mail className="h-3.5 w-3.5 shrink-0" />
+                          <CopyableEmail email={customer.email} />
                         </div>
                       )}
                       {(customer.city || customer.state) && (
                         <div className="flex items-center gap-2 text-muted-foreground">
-                          <MapPin className="h-3.5 w-3.5" />
-                          <span>{[customer.city, customer.state].filter(Boolean).join(', ')}</span>
+                          <MapPin className="h-3.5 w-3.5 shrink-0" />
+                          <CopyableText
+                            text={[customer.city, customer.state].filter(Boolean).join(', ')}
+                            label="location"
+                            textClassName="text-sm"
+                          />
                         </div>
                       )}
                       {customer.assigned_sales && (
                         <div className="flex items-center gap-2 text-muted-foreground">
-                          <Building2 className="h-3.5 w-3.5" />
-                          <span>Sales: {(customer.assigned_sales as any)?.full_name}</span>
+                          <Building2 className="h-3.5 w-3.5 shrink-0" />
+                          <CopyableText
+                            text={(customer.assigned_sales as any)?.full_name}
+                            label="assigned sales"
+                            textClassName="text-sm"
+                          >
+                            <span>Sales: {(customer.assigned_sales as any)?.full_name}</span>
+                          </CopyableText>
                         </div>
                       )}
                       {assignment.last_contacted_at && (
@@ -561,6 +625,20 @@ export default function CRODashboard() {
                     </div>
 
                     <div className="flex flex-wrap gap-2 pt-2">
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="gap-1 font-medium"
+                        onClick={() => handleOpenLead(assignment)}
+                        disabled={openingAssignmentId === assignment.id}
+                      >
+                        {openingAssignmentId === assignment.id ? (
+                          <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                        ) : (
+                          <ExternalLink className="h-3.5 w-3.5" />
+                        )}
+                        Open
+                      </Button>
                       {assignment.status !== 'contacted' && (
                         <Button size="sm" variant="outline" onClick={() => handleMarkContacted(assignment)}>
                           <CheckCircle className="h-3.5 w-3.5 mr-1" />
@@ -787,9 +865,14 @@ export default function CRODashboard() {
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setEnquiryDialog(null)}>Cancel</Button>
-            <Button onClick={handleCreateEnquiry} disabled={createLead.isPending || !enquiryTitle.trim()}>
-              {createLead.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-              Create Lead
+            <Button 
+              onClick={handleCreateEnquiry} 
+              disabled={isCreatingEnquiry || createLead.isPending || !enquiryTitle.trim()}
+            >
+              {(isCreatingEnquiry || createLead.isPending) && (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              )}
+              {isCreatingEnquiry || createLead.isPending ? 'Creating Lead...' : 'Create Lead'}
             </Button>
           </DialogFooter>
         </DialogContent>

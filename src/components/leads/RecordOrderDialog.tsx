@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Upload, FileText, Receipt, Loader2, X } from 'lucide-react';
 import {
   Dialog,
@@ -48,6 +48,7 @@ export function RecordOrderDialog({
   const [customerPOFile, setCustomerPOFile] = useState<File | null>(null);
   const [paymentReceiptFile, setPaymentReceiptFile] = useState<File | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const isSubmittingRef = useRef(false);
 
   const { data: quotations = [] } = useQuotations(leadId);
   const { data: existingOrder } = useSalesOrderByLead(leadId);
@@ -67,27 +68,52 @@ export function RecordOrderDialog({
       setNotes('');
       setCustomerPOFile(null);
       setPaymentReceiptFile(null);
+      isSubmittingRef.current = false;
     }
   }, [open]);
 
   const selectedQuotation = quotations.find((q) => q.id === quotationId);
 
   const handleSubmit = async () => {
+    // 1. Strict submission locking against double-clicks and concurrent calls
+    if (isSubmittingRef.current || isSubmitting || createSalesOrder.isPending) {
+      return;
+    }
+
     if (!customerPOFile) {
       toast.error('Please upload the customer PO document');
       return;
     }
 
-    // Duplicate check
-    if (existingOrder) {
-      toast.error(`Order already exists for this lead (${existingOrder.order_number})`);
-      return;
-    }
-
+    isSubmittingRef.current = true;
     setIsSubmitting(true);
     const warnings: string[] = [];
 
     try {
+      // 2. Live database check to prevent race conditions across tabs/windows
+      const { data: dbExistingOrder } = await supabase
+        .from('sales_orders')
+        .select('id, order_number, status')
+        .eq('lead_id', leadId)
+        .neq('status', 'cancelled')
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      let order: any;
+
+      if (dbExistingOrder) {
+        if (dbExistingOrder.status === 'pending_documents') {
+          // Re-use existing pending order from previous attempt instead of creating a second one
+          order = dbExistingOrder;
+        } else {
+          toast.error(`Order already exists for this lead (${dbExistingOrder.order_number})`);
+          setIsSubmitting(false);
+          isSubmittingRef.current = false;
+          return;
+        }
+      }
+
       // --- STEP 1: Resolve customer_id (critical) ---
       let effectiveCustomerId = customerId;
       if (!effectiveCustomerId) {
@@ -102,30 +128,33 @@ export function RecordOrderDialog({
       if (!effectiveCustomerId) {
         toast.error('Customer not linked to this lead. Please link a customer first.');
         setIsSubmitting(false);
+        isSubmittingRef.current = false;
         return;
       }
 
-      // --- STEP 2: Create sales order (critical) ---
+      // --- STEP 2: Create sales order (critical) if not re-using pending ---
       const orderValue = selectedQuotation?.grand_total ?? (parseFloat(paymentAmount) || 0);
-      let order: any;
-      try {
-        order = await createSalesOrder.mutateAsync({
-          lead_id: leadId,
-          quotation_id: quotationId.length > 0 ? quotationId : undefined,
-          customer_id: effectiveCustomerId,
-          order_value: orderValue,
-          payment_amount: parseFloat(paymentAmount) || 0,
-          payment_status: paymentStatus,
-          notes,
-        });
-      } catch (err: any) {
-        console.error('Critical: Failed to create sales order', err);
-        const msg = err?.code === '23505' 
-          ? 'Temporary conflict creating order number. Please try again.'
-          : `Failed to create order: ${err?.message || 'Unknown error'}`;
-        toast.error(msg);
-        setIsSubmitting(false);
-        return;
+      if (!order) {
+        try {
+          order = await createSalesOrder.mutateAsync({
+            lead_id: leadId,
+            quotation_id: quotationId.length > 0 ? quotationId : undefined,
+            customer_id: effectiveCustomerId,
+            order_value: orderValue,
+            payment_amount: parseFloat(paymentAmount) || 0,
+            payment_status: paymentStatus,
+            notes,
+          });
+        } catch (err: any) {
+          console.error('Critical: Failed to create sales order', err);
+          const msg = err?.code === '23505' 
+            ? 'Order already exists for this lead.'
+            : `Failed to create order: ${err?.message || 'Unknown error'}`;
+          toast.error(msg);
+          setIsSubmitting(false);
+          isSubmittingRef.current = false;
+          return;
+        }
       }
 
       // --- STEP 3: Upload customer PO (critical) ---
@@ -137,7 +166,13 @@ export function RecordOrderDialog({
         });
       } catch (err: any) {
         console.error('Critical: Failed to upload PO', err);
-        toast.error(`Order created but PO upload failed: ${err?.message || 'Unknown error'}`);
+        // Clean up partial order to avoid leaving orphan / inconsistent records
+        try {
+          await supabase.from('sales_orders').delete().eq('id', order.id);
+        } catch (cleanupErr) {
+          console.error('Failed to cleanup partial order:', cleanupErr);
+        }
+        toast.error(`PO upload failed: ${err?.message || 'Unknown error'}. Order was not created.`);
         setIsSubmitting(false);
         return;
       }
@@ -247,6 +282,7 @@ export function RecordOrderDialog({
       toast.error(`Failed to record order: ${error?.message || 'Unknown error'}`);
     } finally {
       setIsSubmitting(false);
+      isSubmittingRef.current = false;
     }
   };
 
@@ -372,7 +408,10 @@ export function RecordOrderDialog({
           <Button variant="outline" onClick={() => onOpenChange(false)} disabled={isSubmitting}>
             Cancel
           </Button>
-          <Button onClick={handleSubmit} disabled={isSubmitting || !customerPOFile || !!existingOrder}>
+          <Button
+            onClick={handleSubmit}
+            disabled={isSubmitting || createSalesOrder.isPending || !customerPOFile || (!!existingOrder && existingOrder.status !== 'pending_documents')}
+          >
             {isSubmitting ? (
               <>
                 <Loader2 className="h-4 w-4 mr-2 animate-spin" />

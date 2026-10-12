@@ -19,6 +19,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { Skeleton } from '@/components/ui/skeleton';
+import { CopyableText } from '@/components/shared/CopyableText';
 import { 
   MoreHorizontal, 
   Eye, 
@@ -86,19 +87,19 @@ export function OrdersTable({ orders, isLoading }: OrdersTableProps) {
   // Check if user can edit this order
   const canEditOrder = (order: SalesOrderWithDetails) => {
     if (isManager || isAdmin) return true;
-    return order.created_by === user?.id;
+    return order.created_by === user?.id || order.lead?.assigned_to === user?.id;
   };
 
-  // Check if user can update status (procurement, managers, or order creator)
+  // Check if user can update status (procurement, managers, or order creator/assignee)
   const canUpdateStatus = (order: SalesOrderWithDetails) => {
     if (isManager || isAdmin || isProcurement) return true;
-    return order.created_by === user?.id;
+    return order.created_by === user?.id || order.lead?.assigned_to === user?.id;
   };
 
-  // Check if user can record payment (sales creator or managers)
+  // Check if user can record payment (sales creator, assignee, or managers)
   const canRecordPayment = (order: SalesOrderWithDetails) => {
     if (isManager || isAdmin) return true;
-    return order.created_by === user?.id;
+    return order.created_by === user?.id || order.lead?.assigned_to === user?.id;
   };
 
   const handleDelete = async () => {
@@ -169,25 +170,34 @@ export function OrdersTable({ orders, isLoading }: OrdersTableProps) {
               <TableHead>Status</TableHead>
               <TableHead>Created By</TableHead>
               <TableHead>Date</TableHead>
-              <TableHead className="w-[50px]"></TableHead>
+              <TableHead className="text-right w-[110px]">Action</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {orders.map((order) => (
               <TableRow 
                 key={order.id} 
-                className="cursor-pointer hover:bg-muted/50"
-                onClick={() => setViewOrderId(order.id)}
+                className="hover:bg-muted/40 transition-colors"
               >
                 <TableCell className="font-medium">
-                  {order.order_number}
+                  <div className="flex flex-col gap-1">
+                    <CopyableText text={order.order_number} label="order number" textClassName="font-medium" />
+                    {order.documents && order.documents.length > 0 && (
+                      <div className="flex items-center gap-1">
+                        <Badge variant="outline" className="text-[10px] px-1.5 py-0 h-4 bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-950/40 dark:text-blue-300">
+                          <FileText className="h-2.5 w-2.5 mr-1" />
+                          {order.documents.some(d => d.document_type === 'customer_po') ? 'PO Attached' : `${order.documents.length} doc${order.documents.length > 1 ? 's' : ''}`}
+                        </Badge>
+                      </div>
+                    )}
+                  </div>
                 </TableCell>
                 <TableCell>
-                  <div>
-                    <div className="font-medium">{order.customer?.company_name || '-'}</div>
-                    <div className="text-xs text-muted-foreground">
-                      {order.customer?.contact_person}
-                    </div>
+                  <div className="flex flex-col gap-0.5">
+                    <CopyableText text={order.customer?.company_name} label="company name" textClassName="font-medium" />
+                    {order.customer?.contact_person && (
+                      <CopyableText text={order.customer?.contact_person} label="contact person" textClassName="text-xs text-muted-foreground" />
+                    )}
                   </div>
                 </TableCell>
                 <TableCell className="text-right font-medium">
@@ -217,13 +227,23 @@ export function OrdersTable({ orders, isLoading }: OrdersTableProps) {
                 <TableCell className="text-muted-foreground">
                   {format(new Date(order.created_at), 'dd MMM yyyy')}
                 </TableCell>
-                <TableCell onClick={(e) => e.stopPropagation()}>
-                  <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                      <Button variant="ghost" size="icon" className="h-8 w-8">
-                        <MoreHorizontal className="h-4 w-4" />
-                      </Button>
-                    </DropdownMenuTrigger>
+                <TableCell className="text-right">
+                  <div className="flex items-center justify-end gap-1">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="h-8 px-2.5 text-xs font-medium gap-1 hover:bg-primary hover:text-primary-foreground transition-colors"
+                      onClick={() => setViewOrderId(order.id)}
+                    >
+                      <Eye className="h-3.5 w-3.5" />
+                      View
+                    </Button>
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button variant="ghost" size="icon" className="h-8 w-8">
+                          <MoreHorizontal className="h-4 w-4" />
+                        </Button>
+                      </DropdownMenuTrigger>
                     <DropdownMenuContent align="end">
                       <DropdownMenuItem onClick={() => setViewOrderId(order.id)}>
                         <Eye className="mr-2 h-4 w-4" />
@@ -295,6 +315,7 @@ export function OrdersTable({ orders, isLoading }: OrdersTableProps) {
                       )}
                     </DropdownMenuContent>
                   </DropdownMenu>
+                  </div>
                 </TableCell>
               </TableRow>
             ))}

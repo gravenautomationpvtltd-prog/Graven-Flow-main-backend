@@ -19,7 +19,8 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { useSendWhatsApp } from '@/hooks/useSendWhatsApp';
-import { MessageCircle, Send, Plus, X } from 'lucide-react';
+import { Send, Plus, X } from 'lucide-react';
+import { WhatsAppIcon } from '@/components/icons/WhatsAppIcon';
 
 interface SendWhatsAppDialogProps {
   open: boolean;
@@ -94,7 +95,7 @@ export function SendWhatsAppDialog({
       <DialogContent className="max-w-md">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
-            <MessageCircle className="h-5 w-5 text-green-600" />
+            <WhatsAppIcon className="h-5 w-5 text-green-600" />
             Send WhatsApp Message
           </DialogTitle>
           <DialogDescription>

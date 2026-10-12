@@ -215,10 +215,9 @@ export function useLqtLeads(tab: LqtTab, range: LqtRange = DEFAULT_RANGE) {
       if (error) throw error;
       return (data ?? []) as LqtLead[];
     },
-    staleTime: 0,
-    refetchOnWindowFocus: true,
-    refetchOnMount: 'always',
-    refetchOnReconnect: 'always',
+    staleTime: 15_000,
+    refetchOnWindowFocus: false,
+    refetchOnMount: true,
   });
 }
 

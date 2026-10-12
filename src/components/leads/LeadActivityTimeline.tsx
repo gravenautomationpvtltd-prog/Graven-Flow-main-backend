@@ -1,7 +1,6 @@
 import { formatDistanceToNow } from 'date-fns';
 import { 
   Phone, 
-  MessageCircle, 
   Mail, 
   StickyNote, 
   RefreshCcw, 
@@ -10,6 +9,7 @@ import {
   Clock,
   Repeat
 } from 'lucide-react';
+import { WhatsAppIcon } from '@/components/icons/WhatsAppIcon';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useActivities } from '@/hooks/useActivities';
@@ -17,7 +17,7 @@ import { cn } from '@/lib/utils';
 
 const activityIcons: Record<string, React.ComponentType<{ className?: string }>> = {
   call: Phone,
-  whatsapp: MessageCircle,
+  whatsapp: WhatsAppIcon,
   email: Mail,
   note: StickyNote,
   status_change: RefreshCcw,

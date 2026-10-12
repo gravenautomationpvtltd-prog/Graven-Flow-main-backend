@@ -74,7 +74,7 @@ export default function Auth() {
       return;
     }
 
-    const timer = window.setTimeout(() => setShowAuthRecovery(true), 10_000);
+    const timer = window.setTimeout(() => setShowAuthRecovery(true), 35_000);
     return () => window.clearTimeout(timer);
   }, [authLoading]);
 
@@ -103,7 +103,8 @@ export default function Auth() {
     setIsRetrying(false);
     setServiceNotice(null);
     try {
-      const { error } = await signIn(loginEmail, loginPassword, () => setIsRetrying(true));
+      const cleanEmail = loginEmail.trim().toLowerCase();
+      const { error } = await signIn(cleanEmail, loginPassword, () => setIsRetrying(true));
 
 
       if (error) {

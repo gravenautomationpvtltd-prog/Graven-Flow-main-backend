@@ -2,14 +2,23 @@ import { useState, useMemo } from 'react';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
+import { 
+  DropdownMenu, 
+  DropdownMenuContent, 
+  DropdownMenuItem, 
+  DropdownMenuTrigger,
+  DropdownMenuSub,
+  DropdownMenuSubTrigger,
+  DropdownMenuSubContent
+} from '@/components/ui/dropdown-menu';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { Checkbox } from '@/components/ui/checkbox';
-import { MoreHorizontal, Pencil, Trash2, Eye, Phone, Mail, MessageCircle, Star } from 'lucide-react';
-import { DropdownMenuSub, DropdownMenuSubTrigger, DropdownMenuSubContent } from '@/components/ui/dropdown-menu';
+import { MoreHorizontal, Pencil, Trash2, Eye, Phone, Mail, Star } from 'lucide-react';
+import { WhatsAppIcon } from '@/components/icons/WhatsAppIcon';
 import { getSegmentConfig, SEGMENT_OPTIONS } from '@/lib/segment-config';
 import { useUpdateCustomerSegment } from '@/hooks/useCROAssignments';
 import { useNavigate } from 'react-router-dom';
+import { CopyableText, CopyablePhone, CopyableEmail } from '@/components/shared/CopyableText';
 import { Skeleton } from '@/components/ui/skeleton';
 import { PaginationControls } from '@/components/ui/pagination-controls';
 import { useEnquiryTemplate } from '@/hooks/useCustomerOutreach';
@@ -154,7 +163,7 @@ export function CustomerListTable({
               <TableHead>Assigned To</TableHead>
               <TableHead>Last Contacted</TableHead>
               <TableHead>Quick Actions</TableHead>
-              <TableHead className="w-[70px]">Actions</TableHead>
+              <TableHead className="w-[130px] text-right">Actions</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -165,8 +174,7 @@ export function CustomerListTable({
               return (
                 <TableRow 
                   key={customer.id} 
-                  className={`cursor-pointer hover:bg-muted/50 ${isSelected ? 'bg-primary/5' : ''}`}
-                  onClick={() => navigate(`/customers/${customer.id}`)}
+                  className={`hover:bg-muted/40 transition-colors ${isSelected ? 'bg-primary/5' : ''}`}
                 >
                   {hasSelection && (
                     <TableCell>
@@ -178,36 +186,40 @@ export function CustomerListTable({
                     </TableCell>
                   )}
                   <TableCell>
-                    <div className="font-medium">{customer.company_name}</div>
+                    <CopyableText
+                      text={customer.company_name}
+                      label="company name"
+                      onClickText={() => navigate(`/customers/${customer.id}`)}
+                      textClassName="font-medium text-foreground"
+                    />
                     {customer.email && (
-                      <div className="text-sm text-muted-foreground flex items-center gap-1">
-                        <Mail className="h-3 w-3" />
-                        <a 
-                          href={`mailto:${customer.email}`} 
-                          onClick={(e) => e.stopPropagation()}
-                          className="hover:underline"
-                        >
-                          {customer.email}
-                        </a>
+                      <div className="text-sm text-muted-foreground flex items-center gap-1 mt-0.5">
+                        <Mail className="h-3 w-3 shrink-0" />
+                        <CopyableEmail email={customer.email} />
                       </div>
                     )}
                   </TableCell>
-                  <TableCell>{customer.contact_person || '-'}</TableCell>
                   <TableCell>
-                    <a 
-                      href={`tel:${customer.phone}`}
-                      onClick={(e) => e.stopPropagation()}
-                      className="flex items-center gap-1 hover:underline"
-                    >
-                      <Phone className="h-3 w-3" />
-                      {customer.phone}
-                    </a>
+                    <CopyableText text={customer.contact_person} label="contact person" />
                   </TableCell>
                   <TableCell>
-                    {customer.city && customer.state 
-                      ? `${customer.city}, ${customer.state}`
-                      : customer.city || customer.state || '-'
-                    }
+                    {customer.phone ? (
+                      <div className="flex items-center gap-1">
+                        <Phone className="h-3 w-3 text-muted-foreground shrink-0" />
+                        <CopyablePhone phone={customer.phone} />
+                      </div>
+                    ) : (
+                      <span className="text-muted-foreground">—</span>
+                    )}
+                  </TableCell>
+                  <TableCell>
+                    <CopyableText
+                      text={customer.city && customer.state 
+                        ? `${customer.city}, ${customer.state}`
+                        : customer.city || customer.state || null
+                      }
+                      label="location"
+                    />
                   </TableCell>
                   <TableCell>
                     <Badge variant={customer.is_b2b ? 'default' : 'secondary'}>
@@ -245,7 +257,7 @@ export function CustomerListTable({
                             onClick={(e) => handleWhatsAppEnquiry(e, customer)}
                             disabled={!customer.phone}
                           >
-                            <MessageCircle className="h-4 w-4" />
+                            <WhatsAppIcon className="h-4 w-4" />
                           </Button>
                         </TooltipTrigger>
                         <TooltipContent>Send WhatsApp Enquiry</TooltipContent>
@@ -266,13 +278,14 @@ export function CustomerListTable({
                       </Tooltip>
                     </div>
                   </TableCell>
-                  <TableCell>
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
-                        <Button variant="ghost" size="icon">
-                          <MoreHorizontal className="h-4 w-4" />
-                        </Button>
-                      </DropdownMenuTrigger>
+                  <TableCell className="text-right">
+                    <div className="flex items-center justify-end gap-1">
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
+                          <Button variant="ghost" size="icon" className="h-8 w-8">
+                            <MoreHorizontal className="h-4 w-4" />
+                          </Button>
+                        </DropdownMenuTrigger>
                       <DropdownMenuContent align="end">
                         <DropdownMenuItem onClick={(e) => { e.stopPropagation(); navigate(`/customers/${customer.id}`); }}>
                           <Eye className="mr-2 h-4 w-4" />
@@ -315,6 +328,7 @@ export function CustomerListTable({
                         </DropdownMenuSub>
                       </DropdownMenuContent>
                     </DropdownMenu>
+                    </div>
                   </TableCell>
                 </TableRow>
               );

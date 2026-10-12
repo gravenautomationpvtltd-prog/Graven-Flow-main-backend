@@ -8,7 +8,9 @@ import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Search, ExternalLink } from 'lucide-react';
+import { CopyableText } from '@/components/shared/CopyableText';
 import { format } from 'date-fns';
+import { formatISTDate, formatISTTime, formatISTDateTime } from '@/lib/date-utils';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 
 interface Props {
@@ -34,7 +36,7 @@ export function LeadsDrilldownDialog({ open, onOpenChange, dateRange, assignedTo
   const [statusFilter, setStatusFilter] = useState<string>('all');
 
   const { data: leads = [], isLoading } = useQuery({
-    queryKey: ['drilldown-leads', dateRange.from, dateRange.to, search, statusFilter, assignedTo ?? null],
+    queryKey: ['drilldown-leads', dateRange.from?.toISOString(), dateRange.to?.toISOString(), search, statusFilter, assignedTo ?? null],
     queryFn: async () => {
       let query = supabase
         .from('leads')
@@ -101,12 +103,32 @@ export function LeadsDrilldownDialog({ open, onOpenChange, dateRange, assignedTo
             ) : leads.length === 0 ? (
               <TableRow><TableCell colSpan={5} className="text-center py-8 text-muted-foreground">No leads found</TableCell></TableRow>
             ) : leads.map((lead: any) => (
-              <TableRow key={lead.id} className="cursor-pointer hover:bg-muted/50" onClick={() => { onOpenChange(false); navigate(`/leads/${lead.id}`); }}>
-                <TableCell className="font-medium">{lead.title || 'Untitled'}</TableCell>
-                <TableCell>{lead.customer?.company_name || '—'}</TableCell>
+              <TableRow key={lead.id} className="hover:bg-muted/40 transition-colors">
+                <TableCell className="font-medium">
+                  <CopyableText
+                    text={lead.title || 'Untitled'}
+                    label="lead title"
+                    onClickText={!lead.customer?.company_name ? () => { onOpenChange(false); navigate(`/leads/${lead.id}`); } : undefined}
+                    textClassName="font-medium"
+                  />
+                </TableCell>
+                <TableCell>
+                  {lead.customer?.company_name ? (
+                    <CopyableText
+                      text={lead.customer.company_name}
+                      label="company name"
+                      onClickText={() => { onOpenChange(false); navigate(`/leads/${lead.id}`); }}
+                      textClassName="font-medium text-foreground"
+                    />
+                  ) : '—'}
+                </TableCell>
                 <TableCell><Badge className={statusColors[lead.status] || ''} variant="secondary">{lead.status}</Badge></TableCell>
-                <TableCell className="capitalize">{lead.source?.replace(/_/g, ' ') || '—'}</TableCell>
-                <TableCell>{format(new Date(lead.created_at), 'dd MMM yyyy')}</TableCell>
+                <TableCell title={formatISTDateTime(lead.created_at)}>
+                  <div className="flex flex-col">
+                    <span className="font-medium whitespace-nowrap">{formatISTDate(lead.created_at, 'medium')}</span>
+                    <span className="text-[11px] text-muted-foreground whitespace-nowrap">{formatISTTime(lead.created_at)}</span>
+                  </div>
+                </TableCell>
               </TableRow>
             ))}
           </TableBody>

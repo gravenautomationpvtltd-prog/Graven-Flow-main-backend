@@ -3,7 +3,6 @@ import { useNavigate } from 'react-router-dom';
 import { format } from 'date-fns';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { PaginationControls } from '@/components/ui/pagination-controls';
@@ -22,8 +21,9 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from '@/components/ui/tooltip';
-import { Trophy, XCircle, ExternalLink, Package } from 'lucide-react';
+import { Trophy, XCircle, Package } from 'lucide-react';
 import { DealDetail } from '@/hooks/useEmployeeDetailedStats';
+import { CopyableText } from '@/components/shared/CopyableText';
 
 interface EmployeeDealsTableProps {
   deals: DealDetail[] | undefined;
@@ -110,20 +110,24 @@ export function EmployeeDealsTable({ deals, isLoading, initialFilter = 'all' }: 
                     <TableHead className="text-right">Order Value</TableHead>
                     <TableHead>Products</TableHead>
                     <TableHead>Closed Date</TableHead>
-                    <TableHead className="w-10"></TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {paginatedDeals.map((deal) => (
-                    <TableRow 
-                      key={deal.id}
-                      className="cursor-pointer hover:bg-muted/50"
-                      onClick={() => navigate(`/leads/${deal.leadId}`)}
-                    >
+                    <TableRow key={deal.id}>
                       <TableCell className="font-medium max-w-[200px] truncate">
-                        {deal.leadTitle}
+                        <CopyableText
+                          text={deal.leadTitle}
+                          onClickText={!deal.customerName ? () => navigate(`/leads/${deal.leadId}`) : undefined}
+                        />
                       </TableCell>
-                      <TableCell>{deal.customerName}</TableCell>
+                      <TableCell>
+                        <CopyableText
+                          text={deal.customerName}
+                          onClickText={() => navigate(`/leads/${deal.leadId}`)}
+                          textClassName="font-medium text-foreground"
+                        />
+                      </TableCell>
                       <TableCell>
                         {deal.outcome === 'won' ? (
                           <Badge className="bg-green-500/10 text-green-600 hover:bg-green-500/20">
@@ -198,18 +202,6 @@ export function EmployeeDealsTable({ deals, isLoading, initialFilter = 'all' }: 
                       </TableCell>
                       <TableCell>
                         {format(new Date(deal.closedDate), 'dd MMM yyyy')}
-                      </TableCell>
-                      <TableCell>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            navigate(`/leads/${deal.leadId}`);
-                          }}
-                        >
-                          <ExternalLink className="h-4 w-4" />
-                        </Button>
                       </TableCell>
                     </TableRow>
                   ))}

@@ -12,8 +12,8 @@ interface ProtectedRouteProps {
 const NO_TENANT_ALLOWED_PATHS = ['/dashboard', '/settings', '/profile', '/onboarding', '/subscription-expired'];
 
 export function ProtectedRoute({ children }: ProtectedRouteProps) {
-  const { user, session, loading: authLoading } = useAuth();
-  const { hasTenant, isExpired, loading: tenantLoading } = useTenantStatus();
+  const { user, session, loading: authLoading, mustChangePassword } = useAuth();
+  const { hasTenant, loading: tenantLoading } = useTenantStatus();
   const location = useLocation();
 
   // Show loader only during initial bootstrap — not on background revalidation
@@ -33,17 +33,23 @@ export function ProtectedRoute({ children }: ProtectedRouteProps) {
     return <Navigate to="/auth" replace />;
   }
 
+  // Force first-login password change before any protected access is permitted
+  if (mustChangePassword) {
+    if (location.pathname !== '/set-new-password') {
+      return <Navigate to="/set-new-password" replace />;
+    }
+    return <>{children}</>;
+  } else if (location.pathname === '/set-new-password') {
+    // If password change is not required, redirect to dashboard
+    return <Navigate to="/dashboard" replace />;
+  }
+
   // No tenant: allow specific pages, redirect everything else to dashboard
   if (!hasTenant) {
     if (NO_TENANT_ALLOWED_PATHS.includes(location.pathname)) {
       return <>{children}</>;
     }
     return <Navigate to="/dashboard" replace />;
-  }
-
-  // Expired → subscription expired page
-  if (isExpired && location.pathname !== '/subscription-expired') {
-    return <Navigate to="/subscription-expired" replace />;
   }
 
   return <>{children}</>;

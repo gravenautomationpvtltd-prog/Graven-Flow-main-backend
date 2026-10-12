@@ -74,7 +74,9 @@ export function useSegmentAnalytics({ dateRange, userId, isScoped }: UseSegmentA
         all_qualifiers: buildMetricData('all_qualifiers'),
       };
     },
-    staleTime: 5 * 60 * 1000,
+    staleTime: 10 * 1000,
+    refetchOnWindowFocus: true,
+    refetchOnMount: true,
   });
 }
 

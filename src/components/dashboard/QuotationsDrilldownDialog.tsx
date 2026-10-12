@@ -8,7 +8,10 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { ExternalLink } from 'lucide-react';
 import { format } from 'date-fns';
+import { formatISTDate, formatISTTime, formatISTDateTime } from '@/lib/date-utils';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { CopyableText } from '@/components/shared/CopyableText';
+import { fetchUserAssociatedLeadIds } from '@/lib/lead-persistence';
 
 interface Props {
   open: boolean;
@@ -28,8 +31,8 @@ export function QuotationsDrilldownDialog({ open, onOpenChange, dateRange, assig
   const navigate = useNavigate();
   const [statusFilter, setStatusFilter] = useState<string>('all');
 
-  const { data: quotations = [], isLoading } = useQuery({
-    queryKey: ['drilldown-quotations', dateRange.from, dateRange.to, statusFilter, assignedTo ?? null],
+  const { data: result = { quotations: [], totalCount: 0, totalValue: 0 }, isLoading } = useQuery({
+    queryKey: ['drilldown-quotations', dateRange.from?.toISOString(), dateRange.to?.toISOString(), statusFilter, assignedTo ?? null],
     queryFn: async () => {
       let query = supabase
         .from('quotations')
@@ -37,21 +40,56 @@ export function QuotationsDrilldownDialog({ open, onOpenChange, dateRange, assig
         .is('deleted_at', null)
         .not('status', 'in', '("won","lost","draft")')
         .order('created_at', { ascending: false })
-        .limit(20);
+        .limit(50);
 
-      if (dateRange.from) query = query.gte('created_at', dateRange.from.toISOString());
-      if (dateRange.to) query = query.lte('created_at', dateRange.to.toISOString());
-      if (assignedTo) query = query.eq('created_by', assignedTo);
-      if (statusFilter && statusFilter !== 'all') query = query.eq('status', statusFilter);
+      let sumQuery = supabase
+        .from('quotations')
+        .select('grand_total', { count: 'exact' })
+        .is('deleted_at', null)
+        .not('status', 'in', '("won","lost","draft")');
 
-      const { data, error } = await query;
-      if (error) throw error;
-      return data;
+      if (dateRange.from) {
+        query = query.gte('created_at', dateRange.from.toISOString());
+        sumQuery = sumQuery.gte('created_at', dateRange.from.toISOString());
+      }
+      if (dateRange.to) {
+        query = query.lte('created_at', dateRange.to.toISOString());
+        sumQuery = sumQuery.lte('created_at', dateRange.to.toISOString());
+      }
+      if (assignedTo) {
+        const associatedLeadIds = (await fetchUserAssociatedLeadIds(assignedTo)).slice(0, 50);
+        if (associatedLeadIds.length > 0 && associatedLeadIds.length <= 50) {
+          const filterStr = `created_by.eq.${assignedTo},lead_id.in.(${associatedLeadIds.join(',')})`;
+          query = query.or(filterStr);
+          sumQuery = sumQuery.or(filterStr);
+        } else {
+          query = query.eq('created_by', assignedTo);
+          sumQuery = sumQuery.eq('created_by', assignedTo);
+        }
+      }
+      if (statusFilter && statusFilter !== 'all') {
+        query = query.eq('status', statusFilter);
+        sumQuery = sumQuery.eq('status', statusFilter);
+      }
+
+      const [{ data: quotations, error: qErr }, { data: allTotals, count: totalCount, error: sErr }] = await Promise.all([
+        query,
+        sumQuery,
+      ]);
+
+      if (qErr) throw qErr;
+      if (sErr) throw sErr;
+
+      const totalValue = (allTotals || []).reduce((sum: number, q: any) => sum + (Number(q.grand_total) || 0), 0);
+
+      return { quotations: quotations || [], totalCount: totalCount || 0, totalValue };
     },
     enabled: open,
+    staleTime: 10_000,
   });
 
-  const totalValue = quotations.reduce((sum: number, q: any) => sum + (q.grand_total || 0), 0);
+  const quotations = result.quotations;
+  const totalValue = result.totalValue;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -95,12 +133,30 @@ export function QuotationsDrilldownDialog({ open, onOpenChange, dateRange, assig
             ) : quotations.length === 0 ? (
               <TableRow><TableCell colSpan={5} className="text-center py-8 text-muted-foreground">No quotations found</TableCell></TableRow>
             ) : quotations.map((q: any) => (
-              <TableRow key={q.id} className="cursor-pointer hover:bg-muted/50" onClick={() => { if (q.lead_id) { onOpenChange(false); navigate(`/leads/${q.lead_id}`); } }}>
-                <TableCell className="font-medium">{q.quotation_number || '—'}</TableCell>
-                <TableCell>{q.customer?.company_name || '—'}</TableCell>
+              <TableRow key={q.id}>
+                <TableCell className="font-medium">
+                  {q.quotation_number ? <CopyableText text={q.quotation_number} /> : '—'}
+                </TableCell>
+                <TableCell>
+                  {q.customer?.company_name ? (
+                    <CopyableText
+                      text={q.customer.company_name}
+                      onClickText={q.lead_id ? () => {
+                        onOpenChange(false);
+                        navigate(`/leads/${q.lead_id}`);
+                      } : undefined}
+                      textClassName="font-medium text-foreground"
+                    />
+                  ) : '—'}
+                </TableCell>
                 <TableCell className="text-right font-medium">₹{Math.round(q.grand_total || 0).toLocaleString('en-IN')}</TableCell>
                 <TableCell><Badge className={statusColors[q.status] || ''} variant="secondary">{q.status}</Badge></TableCell>
-                <TableCell>{format(new Date(q.created_at), 'dd MMM yyyy')}</TableCell>
+                <TableCell title={formatISTDateTime(q.created_at)}>
+                  <div className="flex flex-col">
+                    <span className="font-medium whitespace-nowrap">{formatISTDate(q.created_at, 'medium')}</span>
+                    <span className="text-[11px] text-muted-foreground whitespace-nowrap">{formatISTTime(q.created_at)}</span>
+                  </div>
+                </TableCell>
               </TableRow>
             ))}
           </TableBody>

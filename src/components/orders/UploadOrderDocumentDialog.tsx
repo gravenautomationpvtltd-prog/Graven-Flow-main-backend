@@ -17,11 +17,14 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { useUploadOrderDocument } from '@/hooks/useSalesOrders';
+import { supabase } from '@/integrations/supabase/client';
 import { Upload, File, X } from 'lucide-react';
+import { toast } from 'sonner';
 
 interface UploadOrderDocumentDialogProps {
-  orderId: string;
-  orderNumber: string;
+  orderId?: string;
+  orderNumber?: string;
+  order?: { id: string; order_number?: string } | null;
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }
@@ -39,11 +42,14 @@ const documentTypes: { value: DocumentType; label: string }[] = [
 ];
 
 export function UploadOrderDocumentDialog({
-  orderId,
-  orderNumber,
+  orderId: propOrderId,
+  orderNumber: propOrderNumber,
+  order,
   open,
   onOpenChange,
 }: UploadOrderDocumentDialogProps) {
+  const orderId = propOrderId || order?.id || '';
+  const orderNumber = propOrderNumber || order?.order_number || '';
   const [documentType, setDocumentType] = useState<DocumentType>('customer_po');
   const [customName, setCustomName] = useState('');
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
@@ -71,6 +77,10 @@ export function UploadOrderDocumentDialog({
   };
 
   const handleSubmit = async () => {
+    if (!orderId) {
+      toast.error('Order ID is missing. Please refresh and try again.');
+      return;
+    }
     if (!selectedFile) return;
     if (documentType === 'other' && !customName.trim()) return;
 
@@ -80,6 +90,18 @@ export function UploadOrderDocumentDialog({
       file: selectedFile,
       customName: documentType === 'other' ? customName.trim() : undefined,
     });
+
+    if (documentType === 'customer_po') {
+      try {
+        await supabase
+          .from('sales_orders')
+          .update({ status: 'ready_for_procurement' })
+          .eq('id', orderId)
+          .eq('status', 'pending_documents');
+      } catch (err) {
+        console.warn('Auto status transition notice:', err);
+      }
+    }
 
     // Reset form
     setSelectedFile(null);

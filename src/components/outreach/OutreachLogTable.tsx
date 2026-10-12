@@ -1,7 +1,9 @@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Badge } from '@/components/ui/badge';
-import { MessageCircle, Mail, Check } from 'lucide-react';
+import { Mail, Check } from 'lucide-react';
+import { WhatsAppIcon } from '@/components/icons/WhatsAppIcon';
+import { CopyableText } from '@/components/shared/CopyableText';
 import { format } from 'date-fns';
 import type { OutreachRecord } from '@/hooks/useOutreachAnalytics';
 
@@ -53,17 +55,19 @@ export function OutreachLogTable({ data, isLoading }: OutreachLogTableProps) {
                   {record.campaign_date ? format(new Date(record.campaign_date), 'MMM d, yyyy') : '-'}
                 </TableCell>
                 <TableCell>
-                  <div className="font-medium">{record.customer?.company_name || 'Unknown'}</div>
-                  {record.customer?.contact_person && (
-                    <div className="text-sm text-muted-foreground">{record.customer.contact_person}</div>
-                  )}
+                  <div className="flex flex-col gap-0.5">
+                    <CopyableText text={record.customer?.company_name || 'Unknown'} label="company name" textClassName="font-medium" />
+                    {record.customer?.contact_person && (
+                      <CopyableText text={record.customer.contact_person} label="contact person" textClassName="text-xs text-muted-foreground" />
+                    )}
+                  </div>
                 </TableCell>
                 <TableCell>{record.sent_by?.full_name || 'System'}</TableCell>
                 <TableCell>
                   <div className="flex items-center justify-center gap-2">
                     {hasWhatsApp && (
                       <div className="flex items-center gap-1 text-green-600">
-                        <MessageCircle className="h-4 w-4" />
+                        <WhatsAppIcon className="h-4 w-4" />
                         <span className="text-xs">
                           {record.whatsapp_sent_at && format(new Date(record.whatsapp_sent_at), 'HH:mm')}
                         </span>

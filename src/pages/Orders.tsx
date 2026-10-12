@@ -42,9 +42,12 @@ export default function Orders() {
     if (!orders) return [];
     
     return orders.filter(order => {
-      // Role-based filtering: sales users see only their orders
+      // Role-based filtering: sales users see their orders, orders from their leads, or orders where they attached documents
       if (!isManager && !isAdmin && user) {
-        if (order.created_by !== user.id) return false;
+        const isCreator = order.created_by === user.id;
+        const isAssignedToLead = order.lead?.assigned_to === user.id;
+        const isUploadedByMe = order.documents?.some((d: any) => d.uploaded_by === user.id);
+        if (!isCreator && !isAssignedToLead && !isUploadedByMe) return false;
       }
       
       // Date range filtering

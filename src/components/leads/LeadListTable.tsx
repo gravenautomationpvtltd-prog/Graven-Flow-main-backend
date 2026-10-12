@@ -1,5 +1,5 @@
 import { useNavigate, useLocation } from 'react-router-dom';
-import { format, formatDistanceToNow } from 'date-fns';
+import { formatISTDate, formatISTTime, formatISTDateTime, formatISTRelativeTime } from '@/lib/date-utils';
 import {
   Table,
   TableBody,
@@ -16,6 +16,7 @@ import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Skeleton } from '@/components/ui/skeleton';
 import { PaginationControls } from '@/components/ui/pagination-controls';
 import { Badge } from '@/components/ui/badge';
+import { CopyableText } from '@/components/shared/CopyableText';
 import { Package, Clock, CheckCircle2 } from 'lucide-react';
 import type { LeadWithCustomer } from '@/hooks/useLeads';
 import type { Database } from '@/integrations/supabase/types';
@@ -95,6 +96,16 @@ export function LeadListTable({
 
   return (
     <div className="space-y-4">
+      {onPageChange && onPageSizeChange && (
+        <PaginationControls
+          currentPage={currentPage}
+          totalCount={totalCount}
+          pageSize={pageSize}
+          onPageChange={onPageChange}
+          onPageSizeChange={onPageSizeChange}
+        />
+      )}
+
       <div className="rounded-md border">
         <Table>
           <TableHeader>
@@ -115,28 +126,46 @@ export function LeadListTable({
             {leads.map((lead) => (
               <TableRow 
                 key={lead.id} 
-                className="cursor-pointer hover:bg-muted/50"
-                onClick={() => handleLeadClick(lead.id)}
+                className="hover:bg-muted/40 transition-colors"
               >
-                <TableCell className="font-medium max-w-[200px] truncate">
-                  {lead.title}
+                <TableCell className="font-medium max-w-[200px]">
+                  <CopyableText
+                    text={lead.title}
+                    label="lead title"
+                    truncate
+                    className="max-w-[200px]"
+                    textClassName="font-medium text-sm text-foreground"
+                    onClickText={!lead.customer ? () => handleLeadClick(lead.id) : undefined}
+                  />
                 </TableCell>
                 <TableCell>
                   {lead.customer ? (
-                    <div className="flex flex-col">
-                      <span className="font-medium text-sm">{lead.customer.company_name}</span>
+                    <div className="flex flex-col gap-0.5">
+                      <CopyableText
+                        text={lead.customer.company_name}
+                        label="company name"
+                        onClickText={() => handleLeadClick(lead.id)}
+                        textClassName="font-medium text-sm text-foreground"
+                      />
                       {lead.customer.contact_person && (
-                        <span className="text-xs text-muted-foreground">
-                          {lead.customer.contact_person}
-                        </span>
+                        <CopyableText
+                          text={lead.customer.contact_person}
+                          label="contact person"
+                          textClassName="text-xs text-muted-foreground"
+                        />
                       )}
                     </div>
                   ) : (
                     <span className="text-muted-foreground">—</span>
                   )}
                 </TableCell>
-                <TableCell className="text-sm">
-                  {format(new Date(lead.created_at), 'dd/MM/yyyy')}
+                <TableCell className="text-sm" title={formatISTDateTime(lead.created_at)}>
+                  <div className="flex flex-col">
+                    <span className="font-medium whitespace-nowrap">{formatISTDate(lead.created_at)}</span>
+                    <span className="text-[11px] text-muted-foreground whitespace-nowrap">
+                      {formatISTTime(lead.created_at)} · {formatISTRelativeTime(lead.created_at)}
+                    </span>
+                  </div>
                 </TableCell>
                 <TableCell>
                   <LeadSourceBadge source={lead.source} />
@@ -159,15 +188,19 @@ export function LeadListTable({
                           {getInitials(lead.assigned_user.full_name)}
                         </AvatarFallback>
                       </Avatar>
-                      <span className="text-sm">{lead.assigned_user.full_name}</span>
+                      <CopyableText
+                        text={lead.assigned_user.full_name}
+                        label="assignee name"
+                        textClassName="text-sm"
+                      />
                     </div>
                   ) : (
                     <span className="text-muted-foreground">Unassigned</span>
                   )}
                 </TableCell>
-                <TableCell className="text-muted-foreground text-sm">
+                <TableCell className="text-muted-foreground text-sm" title={lead.last_activity_at ? formatISTDateTime(lead.last_activity_at) : undefined}>
                   {lead.last_activity_at 
-                    ? formatDistanceToNow(new Date(lead.last_activity_at), { addSuffix: true })
+                    ? formatISTRelativeTime(lead.last_activity_at)
                     : '—'}
                 </TableCell>
                 <TableCell>

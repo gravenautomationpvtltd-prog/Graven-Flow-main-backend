@@ -1346,7 +1346,204 @@ export function generateDocumentPDF({ documentType, quotation, invoiceOptions, c
   doc.setFontSize(7);
   doc.setFont('helvetica', 'normal');
   doc.text('This is a Computer Generated Document', pageWidth / 2, pageHeight - 5, { align: 'center' });
-  
+
+  // =========================================================================
+  // CONTINUATION PAGE: DETAILED ITEM TABLE (SPECIFICATIONS & WEIGHT DETAILS)
+  // Columns: Sr No. | Item | HSN | QTY | DIMENSIONS | UNIT WEIGHT | TOTAL WEIGHT
+  // =========================================================================
+  doc.addPage();
+
+  let contY = margin;
+
+  // Header on continuation page
+  doc.setFontSize(12);
+  doc.setFont('helvetica', 'bold');
+  const specTitle = documentType === 'proforma' ? 'PROFORMA INVOICE - ITEM SPECIFICATIONS & WEIGHT DETAILS' :
+                    documentType === 'invoice' ? 'TAX INVOICE - ITEM SPECIFICATIONS & WEIGHT DETAILS' :
+                    documentType === 'delivery_challan' ? 'DELIVERY CHALLAN - ITEM SPECIFICATIONS & WEIGHT DETAILS' :
+                    'QUOTATION - ITEM SPECIFICATIONS & WEIGHT DETAILS';
+  doc.text(specTitle, pageWidth / 2, contY, { align: 'center' });
+  contY += 6;
+
+  // Reference bar (Quotation No, Date, Customer)
+  doc.setFontSize(7.5);
+  doc.setFont('helvetica', 'normal');
+  doc.text(`Quotation No: ${quotation.quotation_number || '—'}`, margin, contY);
+  doc.text(`Date: ${formatDateIndian(quotation.created_at)}`, pageWidth / 2, contY, { align: 'center' });
+  doc.text(`Customer: ${(customer?.company_name || '—').toUpperCase()}`, pageWidth - margin, contY, { align: 'right' });
+  contY += 4;
+
+  // Divider line
+  doc.setDrawColor(0, 0, 0);
+  doc.setLineWidth(0.3);
+  doc.line(margin, contY, pageWidth - margin, contY);
+  contY += 3;
+
+  // Build continuation table rows
+  let totalCalculatedWeight = 0;
+  let hasAnyWeightData = false;
+
+  const specTableData: any[][] = items.map((item, index) => {
+    const { code: productCode, description: productDesc } = getPrintableItemLines(item);
+    const formattedItemName = productDesc ? `${productCode}\n${productDesc}` : productCode;
+
+    // Dimensions: check length_cm, width_cm, height_cm or dimensions
+    const p = (item as any).product || item;
+    const l = (item as any).length_cm ?? p?.length_cm ?? null;
+    const w = (item as any).width_cm ?? p?.width_cm ?? null;
+    const h = (item as any).height_cm ?? p?.height_cm ?? null;
+
+    let dimensionsStr = '—';
+    if (l != null && w != null && h != null && Number(l) > 0 && Number(w) > 0 && Number(h) > 0) {
+      dimensionsStr = `${Number(l)} × ${Number(w)} × ${Number(h)} CM`;
+    } else if ((item as any).dimensions || p?.dimensions) {
+      const rawDim = String((item as any).dimensions || p?.dimensions).trim();
+      dimensionsStr = rawDim.toUpperCase().includes('CM') ? rawDim : `${rawDim} CM`;
+    }
+
+    // Unit weight: check unit_weight_kg or weight_kg
+    const rawWt = (item as any).unit_weight_kg ?? (item as any).weight_kg ?? p?.unit_weight_kg ?? p?.weight_kg ?? null;
+    const unitWt = (rawWt != null && Number.isFinite(Number(rawWt)) && Number(rawWt) > 0) ? Number(rawWt) : null;
+
+    let unitWeightStr = '—';
+    let totalWeightStr = '—';
+
+    if (unitWt !== null) {
+      hasAnyWeightData = true;
+      const lineWeight = Math.round(unitWt * item.quantity * 1000) / 1000;
+      totalCalculatedWeight += lineWeight;
+      unitWeightStr = `${unitWt.toFixed(2)} KG`;
+      totalWeightStr = `${lineWeight.toFixed(2)} KG`;
+    }
+
+    const qtyStr = `${item.quantity.toFixed(2)} ${item.unit || 'Nos'}`;
+    const hsnStr = item.hsn_code ? String(item.hsn_code).trim() : '—';
+
+    return [
+      (index + 1).toString(),
+      formattedItemName,
+      hsnStr,
+      qtyStr,
+      dimensionsStr,
+      unitWeightStr,
+      totalWeightStr,
+    ];
+  });
+
+  // Total row at bottom
+  specTableData.push([
+    '',
+    { content: 'Total Weight', styles: { fontStyle: 'bold', halign: 'right' } },
+    '',
+    { content: `${totalQty.toFixed(2)} Nos`, styles: { fontStyle: 'bold', halign: 'center' } },
+    '',
+    '',
+    { content: hasAnyWeightData ? `${totalCalculatedWeight.toFixed(2)} KG` : '—', styles: { fontStyle: 'bold', halign: 'right' } },
+  ]);
+
+  const specColWidths = [14, 62, 18, 20, 28, 19, 19];
+  const specItemCount = items.length;
+
+  autoTable(doc, {
+    startY: contY,
+    head: [['Sr No.', 'Item', 'HSN', 'QTY', 'DIMENSIONS', 'UNIT WEIGHT', 'TOTAL WEIGHT']],
+    body: specTableData,
+    theme: 'plain',
+    rowPageBreak: 'avoid',
+    styles: {
+      fontSize: 7,
+      cellPadding: 2.5,
+      lineWidth: 0,
+      lineColor: [0, 0, 0],
+      textColor: [0, 0, 0],
+      overflow: 'linebreak',
+      valign: 'middle',
+    },
+    headStyles: {
+      fontStyle: 'bold',
+      fillColor: [245, 245, 245],
+      halign: 'center',
+      valign: 'middle',
+      lineWidth: 0.2,
+      lineColor: [0, 0, 0],
+    },
+    columnStyles: {
+      0: { cellWidth: 14, halign: 'center' },
+      1: { cellWidth: 62, halign: 'left' },
+      2: { cellWidth: 18, halign: 'center' },
+      3: { cellWidth: 20, halign: 'center' },
+      4: { cellWidth: 28, halign: 'center' },
+      5: { cellWidth: 19, halign: 'right' },
+      6: { cellWidth: 19, halign: 'right' },
+    },
+    margin: { left: margin, right: margin, top: margin + 15 },
+    tableLineWidth: 0.2,
+    tableLineColor: [0, 0, 0],
+    didParseCell: (data) => {
+      // Bold for Total Weight row
+      if (data.section === 'body' && data.row.index === specItemCount) {
+        data.cell.styles.fontStyle = 'bold';
+      }
+    },
+    didDrawCell: (data) => {
+      if (data.section === 'body' && data.column.index === 1 && data.row.index < specItemCount) {
+        const cellText = String(data.cell.raw || '');
+        const lines = cellText.split('\n');
+        if (lines.length > 1) {
+          const x = data.cell.x + 2;
+          let textY = data.cell.y + 4;
+
+          doc.setFillColor(255, 255, 255);
+          doc.rect(data.cell.x + 0.5, data.cell.y + 0.5, data.cell.width - 1, data.cell.height - 1, 'F');
+
+          doc.setFont('helvetica', 'bold');
+          doc.setFontSize(7);
+          const maxWidth = data.cell.width - 4;
+          const codeLines = doc.splitTextToSize(lines[0], maxWidth) as string[];
+          codeLines.forEach((line: string) => {
+            doc.text(line, x, textY);
+            textY += 3.5;
+          });
+
+          if (lines.length > 1) {
+            doc.setFont('helvetica', 'italic');
+            doc.setFontSize(6);
+            const descText = lines.slice(1).join(' ');
+            const descLines = doc.splitTextToSize(descText, maxWidth) as string[];
+            descLines.forEach((line: string) => {
+              doc.text(line, x, textY);
+              textY += 3;
+            });
+          }
+        }
+      }
+    },
+    didDrawPage: (data) => {
+      const pageNumber = data.pageNumber;
+      const tStartY = ((data.settings.startY as number) || margin);
+      const tEndY = data.cursor?.y || tStartY;
+
+      doc.setDrawColor(0, 0, 0);
+      doc.setLineWidth(0.2);
+
+      let xPos = margin;
+      for (let i = 0; i < specColWidths.length - 1; i++) {
+        xPos += specColWidths[i];
+        doc.line(xPos, tStartY, xPos, tEndY);
+      }
+    },
+  });
+
+  // Final page numbering & footer across all pages
+  const totalPages = doc.getNumberOfPages();
+  for (let p = 1; p <= totalPages; p++) {
+    doc.setPage(p);
+    doc.setFontSize(7);
+    doc.setFont('helvetica', 'normal');
+    doc.text('This is a Computer Generated Document', pageWidth / 2, pageHeight - 5, { align: 'center' });
+    doc.text(`Page ${p} of ${totalPages}`, pageWidth - margin, pageHeight - 5, { align: 'right' });
+  }
+
   return doc;
 }
 

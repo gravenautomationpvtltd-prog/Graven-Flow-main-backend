@@ -27,6 +27,7 @@ import {
   RefreshCw,
 } from 'lucide-react';
 import { format } from 'date-fns';
+import { WhatsAppIcon } from '@/components/icons/WhatsAppIcon';
 import { 
   useOutreachTemplates, 
   useUpdateOutreachTemplate, 
@@ -411,7 +412,7 @@ export function CustomerOutreachManagement() {
               <CardHeader>
                 <div className="flex items-center justify-between">
                   <CardTitle className="flex items-center gap-2">
-                    <MessageSquare className="h-5 w-5" />
+                    <WhatsAppIcon className="h-5 w-5" />
                     WhatsApp Template
                   </CardTitle>
                   {whatsappTemplate && (
@@ -558,7 +559,7 @@ export function CustomerOutreachManagement() {
                         <TableCell>
                           {item.whatsapp_sent_at ? (
                             <Badge variant="outline" className="text-xs">
-                              <MessageSquare className="h-3 w-3 mr-1" />
+                              <WhatsAppIcon className="h-3 w-3 mr-1" />
                               {format(new Date(item.whatsapp_sent_at), 'HH:mm')}
                             </Badge>
                           ) : (

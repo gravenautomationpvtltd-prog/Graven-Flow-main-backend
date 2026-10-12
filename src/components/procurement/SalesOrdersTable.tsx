@@ -1,8 +1,9 @@
 import { useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Package, Plane, MapPin } from 'lucide-react';
+import { Package, Plane, MapPin, Eye } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import {
   Table,
@@ -15,6 +16,7 @@ import {
 import { useSalesOrders, SalesOrderWithDetails } from '@/hooks/useSalesOrders';
 import { format } from 'date-fns';
 import { ProcurementActionsPopover } from './ProcurementActionsPopover';
+import { CopyableText } from '@/components/shared/CopyableText';
 
 interface SalesOrdersTableProps {
   searchQuery: string;
@@ -112,28 +114,30 @@ export function SalesOrdersTable({ searchQuery, statusFilter }: SalesOrdersTable
           {filteredOrders.map((order) => (
             <TableRow
               key={order.id}
+              className="hover:bg-muted/50 cursor-pointer transition-colors"
               onClick={() => handleRowClick(order.id)}
-              className="cursor-pointer hover:bg-muted/50"
             >
-              <TableCell className="font-medium">{order.order_number}</TableCell>
+              <TableCell className="font-medium" onClick={(e) => e.stopPropagation()}>
+                <CopyableText text={order.order_number} label="order number" textClassName="font-medium" />
+              </TableCell>
               <TableCell className="text-muted-foreground text-sm">
                 {order.created_at ? format(new Date(order.created_at), 'dd MMM yyyy') : '—'}
               </TableCell>
               <TableCell>
-                <div>
-                  <p className="font-medium">
-                    {order.customer?.company_name || (
-                      order.customer_id ? (
-                        <span className="text-muted-foreground italic">Access restricted</span>
-                      ) : (
-                        <span className="text-muted-foreground">—</span>
-                      )
-                    )}
-                  </p>
+                <div className="flex flex-col gap-0.5">
+                  {order.customer?.company_name ? (
+                    <CopyableText text={order.customer.company_name} label="company name" textClassName="font-medium text-foreground" />
+                  ) : order.customer_id ? (
+                    <span className="text-muted-foreground italic text-xs">Access restricted</span>
+                  ) : (
+                    <span className="text-muted-foreground text-xs">—</span>
+                  )}
                   {order.lead?.title && (
-                    <p className="text-xs text-muted-foreground truncate max-w-[200px]">
-                      {order.lead.title}
-                    </p>
+                    <CopyableText
+                      text={order.lead.title}
+                      label="lead title"
+                      textClassName="text-xs text-muted-foreground truncate max-w-[200px]"
+                    />
                   )}
                 </div>
               </TableCell>
@@ -201,7 +205,18 @@ export function SalesOrdersTable({ searchQuery, statusFilter }: SalesOrdersTable
                 )}
               </TableCell>
               <TableCell onClick={(e) => e.stopPropagation()}>
-                <ProcurementActionsPopover order={order} />
+                <div className="flex items-center gap-1">
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-8 w-8 hover:bg-muted"
+                    title="View Order Details & Documents"
+                    onClick={() => handleRowClick(order.id)}
+                  >
+                    <Eye className="h-4 w-4 text-muted-foreground" />
+                  </Button>
+                  <ProcurementActionsPopover order={order} />
+                </div>
               </TableCell>
             </TableRow>
           ))}

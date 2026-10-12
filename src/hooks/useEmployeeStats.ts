@@ -280,17 +280,21 @@ export function useEmployeeOrders(employeeId: string, dateRange?: DateRangeParam
 
       const { data: leads } = await leadsQuery;
       const leadIds = leads?.map((l) => l.id) || [];
-      
-      if (leadIds.length === 0) return [];
 
       let query = supabase
         .from('sales_orders')
         .select(`
           *,
-          lead:leads(id, title, customer:customers(id, company_name))
+          lead:leads(id, title, customer:customers(id, company_name)),
+          documents:order_documents(*)
         `)
-        .in('lead_id', leadIds)
         .order('created_at', { ascending: false });
+
+      if (leadIds.length > 0) {
+        query = query.or(`created_by.eq.${employeeId},lead_id.in.(${leadIds.join(',')})`);
+      } else {
+        query = query.eq('created_by', employeeId);
+      }
 
       if (fromISO) query = query.gte('created_at', fromISO);
       if (toISO) query = query.lte('created_at', toISO);

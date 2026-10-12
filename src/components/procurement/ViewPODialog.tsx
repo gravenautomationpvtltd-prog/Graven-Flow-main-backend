@@ -7,7 +7,8 @@ import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent } from '@/components/ui/card';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
-import { Download, FileText, Truck, CheckCircle, XCircle, Send, AlertCircle, RotateCcw, ClipboardCheck, Shield, UserCheck, Mail, ClipboardList, Star, CreditCard, ChevronDown, ChevronUp } from 'lucide-react';
+import { Download, FileText, Truck, CheckCircle, XCircle, Send, AlertCircle, RotateCcw, ClipboardCheck, Shield, UserCheck, Mail, ClipboardList, Star, CreditCard, ChevronDown, ChevronUp, Paperclip } from 'lucide-react';
+import { OrderDocumentsList } from '@/components/orders/OrderDocumentsList';
 import { SendPOEmailDialog } from './SendPOEmailDialog';
 import { RecordGRNDialog } from './RecordGRNDialog';
 import { RateSupplierDialog } from './RateSupplierDialog';
@@ -468,6 +469,20 @@ export function ViewPODialog({ open, onOpenChange, poId, onEdit }: ViewPODialogP
                 </div>
               </CollapsibleContent>
             </Collapsible>
+          )}
+
+          {/* Customer PO & Sales Order Documents */}
+          {po.sales_order_id && (
+            <>
+              <Separator />
+              <div className="space-y-2">
+                <h4 className="text-sm font-medium flex items-center gap-2">
+                  <Paperclip className="h-4 w-4 text-blue-600" />
+                  Attached Customer PO & Order Documents
+                </h4>
+                <OrderDocumentsList salesOrderId={po.sales_order_id} />
+              </div>
+            </>
           )}
 
           {/* Notes */}

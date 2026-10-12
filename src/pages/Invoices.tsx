@@ -1,4 +1,5 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { Helmet } from 'react-helmet-async';
 import { Input } from '@/components/ui/input';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -11,14 +12,24 @@ import { DateRangeFilter, type DatePreset, getDateRangeFromPreset } from '@/comp
 
 export default function Invoices() {
   const { t } = useTranslation();
+  const [searchParams] = useSearchParams();
+  const initialSearch = searchParams.get('search') || '';
   const [activeTab, setActiveTab] = useState('all');
-  const [searchQuery, setSearchQuery] = useState('');
+  const [searchQuery, setSearchQuery] = useState(initialSearch);
   
-  // Date range state
-  const [datePreset, setDatePreset] = useState<DatePreset>('this_month');
+  // Date range state: if user is searching for a specific invoice, default datePreset to 'all'
+  const [datePreset, setDatePreset] = useState<DatePreset>(initialSearch ? 'all' : 'this_month');
   const [customFrom, setCustomFrom] = useState<Date | undefined>();
   const [customTo, setCustomTo] = useState<Date | undefined>();
   const dateRange = getDateRangeFromPreset(datePreset, customFrom, customTo);
+
+  useEffect(() => {
+    const s = searchParams.get('search');
+    if (s) {
+      setSearchQuery(s);
+      setDatePreset('all');
+    }
+  }, [searchParams]);
 
   const { data: invoices = [], isLoading } = useInvoices(activeTab === 'all' ? undefined : activeTab);
 

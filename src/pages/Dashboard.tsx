@@ -1,4 +1,5 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { LeadsDrilldownDialog } from '@/components/dashboard/LeadsDrilldownDialog';
 import { RevenueDrilldownDialog } from '@/components/dashboard/RevenueDrilldownDialog';
 import { CustomersDrilldownDialog } from '@/components/dashboard/CustomersDrilldownDialog';
@@ -14,7 +15,7 @@ import { OverduePaymentsDrilldownDialog } from '@/components/dashboard/OverduePa
 import { useNavigate, Navigate } from 'react-router-dom';
 import { 
   TrendingUp, 
-  Users, 
+  Users,
   AlertTriangle, 
   DollarSign,
   IndianRupee,
@@ -35,7 +36,12 @@ import {
   CreditCard,
   CircleDollarSign,
   AlertCircle,
+  RefreshCw,
 } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { toast } from 'sonner';
+import { cn } from '@/lib/utils';
+import { invalidateDashboardData } from '@/lib/dashboard-invalidation';
 import { CreateLeadDialog } from '@/components/leads/CreateLeadDialog';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -60,9 +66,8 @@ import { SalespersonQuotationWidget } from '@/components/dashboard/SalespersonQu
 import { PaymentCollectionChart } from '@/components/dashboard/PaymentCollectionChart';
 import { ReceivablesAgingChart } from '@/components/dashboard/ReceivablesAgingChart';
 import { TopOutstandingCustomersChart } from '@/components/dashboard/TopOutstandingCustomersChart';
-import { useAccountsStats } from '@/hooks/useAccountsDashboard';
+import { useAccountsData } from '@/hooks/useAccountsDashboard';
 import { useTranslation } from '@/lib/i18n';
-import { useInView } from '@/hooks/useInView';
 import { useDashboardScope } from '@/hooks/useDashboardScope';
 import { DashboardScopeToggle } from '@/components/dashboard/DashboardScopeToggle';
 
@@ -118,15 +123,37 @@ export default function Dashboard() {
 }
 
 function FullDashboard() {
+  const queryClient = useQueryClient();
+  const [isRefreshing, setIsRefreshing] = useState(false);
   const [datePreset, setDatePreset] = useState<DatePreset>('all_time');
-  const [dateRange, setDateRange] = useState<{ from: Date; to: Date }>(getDateRangeFromPreset('all_time'));
-  const [activeDrilldown, setActiveDrilldown] = useState<string | null>(null);
-  const [showCreateLead, setShowCreateLead] = useState(false);
   const [customFrom, setCustomFrom] = useState<Date | undefined>(undefined);
   const [customTo, setCustomTo] = useState<Date | undefined>(undefined);
-  const { user, profile, roles, isAdmin, isManager, isProcurementManager, isSales, isProcurement, isWarehouse, isAccounts, isCRO, isCST, isTST } = useAuth();
+  const [activeDrilldown, setActiveDrilldown] = useState<string | null>(null);
+  const [showCreateLead, setShowCreateLead] = useState(false);
+
+  const dateRange = useMemo(
+    () => getDateRangeFromPreset(datePreset, customFrom, customTo),
+    [datePreset, customFrom, customTo]
+  );
+
+  const { user, profile, roles, isAdmin, isManager, isProcurementManager, isSales, isProcurement, isWarehouse, isAccounts, isCRO, isCST, isTST, refreshProfile } = useAuth();
   const { t } = useTranslation();
   const navigate = useNavigate();
+
+  const handleRefresh = async () => {
+    setIsRefreshing(true);
+    try {
+      await Promise.all([
+        invalidateDashboardData(queryClient),
+        refreshProfile(),
+      ]);
+      toast.success('Dashboard refreshed with latest live data');
+    } catch (e) {
+      toast.error('Failed to refresh dashboard');
+    } finally {
+      setIsRefreshing(false);
+    }
+  };
 
   // Role-based landing redirects: pure-CRO → LQT Inbox, pure-CST → /customer-success, pure-TST → /tst
   useEffect(() => {
@@ -151,22 +178,36 @@ function FullDashboard() {
   const showAccountsDashboard = isAccounts;
   const showCRODashboard = isCRO;
 
-  // Deferred loading for below-fold content
-  const { ref: chartsRef, isInView: chartsInView } = useInView();
-  const { ref: widgetsRef, isInView: widgetsInView } = useInView();
+  // Live real-time database listener: automatically updates dashboard metrics when leads, orders or quotes change
+  useDashboardRealtime({
+    enableSales: showSalesDashboard,
+    enableProcurement: showProcurementDashboard,
+    enableApprovals: canSeeApprovals,
+  });
 
   // Scope: "My work" (personal) vs "My team" (manager view).
   const scope = useDashboardScope();
   const scopedAssignedTo = scope.assignedTo;
 
-  // Fetch chart analytics data only when charts section is in view
-  const { leadTrends, salesPipeline, procurementStatus, leadSources, revenueForecast, isLoading: analyticsLoading } = useDashboardAnalytics(dateRange, chartsInView, scopedAssignedTo);
+  if (typeof window !== 'undefined') {
+    (window as any).__DASHBOARD_DEBUG__ = {
+      roles,
+      isAdmin,
+      isManager,
+      showSalesDashboard,
+      scopedAssignedTo,
+    };
+  }
+
+  // Fetch chart analytics data immediately with caching
+  const { leadTrends, salesPipeline, procurementStatus, leadSources, revenueForecast, isLoading: analyticsLoading } = useDashboardAnalytics(dateRange, showSalesDashboard || showProcurementDashboard, scopedAssignedTo);
   const { data: segmentRevenue, isLoading: segmentLoading } = useSegmentRevenue(
     dateRange,
     scopedAssignedTo,
-    chartsInView && showSalesDashboard,
+    showSalesDashboard,
   );
-  const { data: accountsStats } = useAccountsStats(dateRange, showAccountsDashboard);
+  const { data: accountsData, isLoading: accountsLoading } = useAccountsData(dateRange, showAccountsDashboard);
+  const accountsStats = accountsData?.stats;
 
   // Use cached query hooks — enable based on inclusive role flags
   const { data: stats, isLoading: salesLoading } = useSalesStats(dateRange, showSalesDashboard, scopedAssignedTo);
@@ -174,17 +215,21 @@ function FullDashboard() {
   const { data: pendingApprovals } = usePendingApprovals(canSeeApprovals);
   const loading = salesLoading || procLoading;
 
-  // Debounced realtime invalidation
-  useDashboardRealtime({
-    enableSales: showSalesDashboard,
-    enableProcurement: showProcurementDashboard,
-    enableApprovals: canSeeApprovals,
-  });
   // Sales stat cards with dynamic labels based on selected period
   const periodLabel = getPeriodLabel(datePreset);
   const s = stats || { totalLeads: 0, newLeadsToday: 0, totalRevenue: 0, totalCustomers: 0, pendingQuotationsValue: 0, wonThisMonth: 0 };
   const p = procurementStats || { draftPOs: 0, pendingPOs: 0, lowStockAlerts: 0, totalSuppliers: 0, totalInventoryItems: 0 };
   const pa = pendingApprovals || { pendingVerification: 0, pendingAuthorization: 0, pendingApproval: 0 };
+
+  console.log('[DEBUG Dashboard render]', {
+    datePreset,
+    dateRange,
+    scopedAssignedTo,
+    s,
+    accountsStats,
+    salesLoading,
+    accountsLoading
+  });
   const salesStatCards = [
     {
       title: 'Total Leads',
@@ -367,7 +412,7 @@ function FullDashboard() {
       url: '/accounts',
     },
     {
-      title: 'Total Customers',
+      title: 'Active Customers',
       value: accountsStats?.totalCustomers || 0,
       change: null,
       changeLabel: 'with orders',
@@ -381,12 +426,12 @@ function FullDashboard() {
 
   // Determine which stat cards to show — combine for multi-role users
   const getStatCards = () => {
-    const cards: typeof salesStatCards = [];
-    if (showAccountsDashboard) cards.push(...accountsStatCards);
-    if (showProcurementDashboard && !isManagerOrAdmin) cards.push(...procurementStatCards);
-    if (showSalesDashboard) cards.push(...salesStatCards);
+    const cards: ((typeof salesStatCards)[0] & { loading?: boolean })[] = [];
+    if (showAccountsDashboard) cards.push(...accountsStatCards.map(c => ({ ...c, loading: accountsLoading })));
+    if (showProcurementDashboard && !isManagerOrAdmin) cards.push(...procurementStatCards.map(c => ({ ...c, loading: procLoading })));
+    if (showSalesDashboard) cards.push(...salesStatCards.map(c => ({ ...c, loading: salesLoading })));
     // If only accounts+CRO (no sales/procurement), show accounts cards
-    if (cards.length === 0) return salesStatCards;
+    if (cards.length === 0) return salesStatCards.map(c => ({ ...c, loading: salesLoading }));
     // Deduplicate by title (e.g. both accounts and sales have "Total Customers")
     const seen = new Set<string>();
     return cards.filter(c => { if (seen.has(c.title)) return false; seen.add(c.title); return true; });
@@ -407,6 +452,7 @@ function FullDashboard() {
 
   return (
     <div className="space-y-6 animate-fade-in">
+      <div id="runtime-debug-data" style={{ display: 'none' }} data-debug={JSON.stringify({ s, accountsStats, periodLabel, datePreset, scopedAssignedTo })} />
       {/* Welcome Section with Date Filter */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div className="flex flex-col gap-1">
@@ -435,6 +481,17 @@ function FullDashboard() {
             onCustomToChange={setCustomTo}
             showAllTime={true}
           />
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleRefresh}
+            disabled={isRefreshing}
+            className="gap-2 h-9"
+            title="Refresh dashboard data"
+          >
+            <RefreshCw className={cn("h-4 w-4", isRefreshing && "animate-spin")} />
+            <span>{isRefreshing ? 'Refreshing...' : 'Refresh'}</span>
+          </Button>
         </div>
       </div>
 
@@ -455,94 +512,88 @@ function FullDashboard() {
               </div>
             </CardHeader>
             <CardContent>
-              <div className="text-3xl font-bold font-display">{stat.value}</div>
-              {stat.change !== null && (
-                <p className="text-xs text-muted-foreground mt-1 flex items-center gap-1">
-                  {stat.trend === 'up' && <ArrowUpRight className="h-3 w-3 text-success" />}
-                  {stat.trend === 'down' && <ArrowDownRight className="h-3 w-3 text-destructive" />}
-                  <span className={stat.trend === 'up' ? 'text-success' : stat.trend === 'down' ? 'text-destructive' : ''}>
-                    +{stat.change}
-                  </span>
-                  {stat.changeLabel}
-                </p>
-              )}
-              {stat.change === null && (
-                <p className="text-xs text-muted-foreground mt-1">{stat.changeLabel}</p>
+              {stat.loading ? (
+                <div className="space-y-2 py-1">
+                  <Skeleton className="h-8 w-24" />
+                  <Skeleton className="h-3 w-16" />
+                </div>
+              ) : (
+                <>
+                  <div className="text-3xl font-bold font-display">{stat.value}</div>
+                  {stat.change !== null && (
+                    <p className="text-xs text-muted-foreground mt-1 flex items-center gap-1">
+                      {stat.trend === 'up' && <ArrowUpRight className="h-3 w-3 text-success" />}
+                      {stat.trend === 'down' && <ArrowDownRight className="h-3 w-3 text-destructive" />}
+                      <span className={stat.trend === 'up' ? 'text-success' : stat.trend === 'down' ? 'text-destructive' : ''}>
+                        +{stat.change}
+                      </span>
+                      {stat.changeLabel}
+                    </p>
+                  )}
+                  {stat.change === null && (
+                    <p className="text-xs text-muted-foreground mt-1">{stat.changeLabel}</p>
+                  )}
+                </>
               )}
             </CardContent>
           </Card>
         ))}
       </div>
 
-      {/* Charts Section — deferred until scrolled into view */}
-      <div ref={chartsRef} className="grid gap-6 lg:grid-cols-2">
-        {!chartsInView ? (
+      {/* Charts Section */}
+      <div className="grid gap-6 lg:grid-cols-2">
+        {/* Accounts Charts */}
+        {showAccountsDashboard && (
           <>
-            <Card><CardContent className="pt-6"><Skeleton className="h-[300px]" /></CardContent></Card>
-            <Card><CardContent className="pt-6"><Skeleton className="h-[300px]" /></CardContent></Card>
+            <PaymentCollectionChart enabled={true} />
+            <ReceivablesAgingChart data={accountsData?.aging} isLoading={accountsLoading} />
+            <TopOutstandingCustomersChart data={accountsData?.topCustomers} isLoading={accountsLoading} />
           </>
-        ) : (
-          <>
-            {/* Accounts Charts */}
-            {showAccountsDashboard && (
-              <>
-                <PaymentCollectionChart enabled={chartsInView} />
-                <ReceivablesAgingChart />
-                <TopOutstandingCustomersChart />
-              </>
-            )}
+        )}
 
-            {showSalesDashboard && (
-              <LeadTrendsChart data={leadTrends} isLoading={analyticsLoading} />
-            )}
-            {showSalesDashboard && (
-              <SalesPipelineChart data={salesPipeline} isLoading={analyticsLoading} />
-            )}
-            {showSalesDashboard && (
-              <RevenueForecastChart data={revenueForecast} isLoading={analyticsLoading} />
-            )}
-            {showProcurementDashboard && (
-              <ProcurementStatusChart data={procurementStatus} isLoading={analyticsLoading} />
-            )}
-            {showSalesDashboard && (
-              <LeadSourceChart data={leadSources} isLoading={analyticsLoading} />
-            )}
-            {showSalesDashboard && (
-              <SegmentRevenueChart data={segmentRevenue} isLoading={segmentLoading} />
-            )}
-            {showSalesDashboard && (
-              <SegmentAnalyticsCard
-                dateRange={dateRange}
-                userId={profile?.id}
-                isScoped={showSalesDashboard}
-              />
-            )}
-          </>
+        {showSalesDashboard && (
+          <LeadTrendsChart data={leadTrends} isLoading={analyticsLoading} />
+        )}
+        {showSalesDashboard && (
+          <SalesPipelineChart data={salesPipeline} isLoading={analyticsLoading} />
+        )}
+        {showSalesDashboard && (
+          <RevenueForecastChart data={revenueForecast} isLoading={analyticsLoading} />
+        )}
+        {showProcurementDashboard && (
+          <ProcurementStatusChart data={procurementStatus} isLoading={analyticsLoading} />
+        )}
+        {showSalesDashboard && (
+          <LeadSourceChart data={leadSources} isLoading={analyticsLoading} />
+        )}
+        {showSalesDashboard && (
+          <SegmentRevenueChart data={segmentRevenue} isLoading={segmentLoading} />
+        )}
+        {showSalesDashboard && (
+          <SegmentAnalyticsCard
+            dateRange={dateRange}
+            userId={profile?.id}
+            isScoped={showSalesDashboard}
+          />
         )}
       </div>
 
-      {/* Widgets — deferred until scrolled into view */}
-      <div ref={widgetsRef}>
-        {widgetsInView ? (
-          <>
-            {showSalesDashboard && profile?.id && (
-              <SalespersonQuotationWidget userId={profile.id} userName={profile.full_name || undefined} dateRange={dateRange} />
-            )}
+      {/* Widgets */}
+      <div>
+        {showSalesDashboard && profile?.id && (
+          <SalespersonQuotationWidget userId={profile.id} userName={profile.full_name || undefined} dateRange={dateRange} />
+        )}
 
-            {showSalesDashboard && (
-              <MyEscalationsCard />
-            )}
+        {showSalesDashboard && (
+          <MyEscalationsCard />
+        )}
 
-            {showProcurementDashboard && (
-              <RecentlyResolvedPricesWidget />
-            )}
+        {showProcurementDashboard && (
+          <RecentlyResolvedPricesWidget />
+        )}
 
-            {isManagerOrAdmin && (
-              <DuplicateLeadsWidget />
-            )}
-          </>
-        ) : (
-          <Card><CardContent className="pt-6"><Skeleton className="h-[200px]" /></CardContent></Card>
+        {isManagerOrAdmin && (
+          <DuplicateLeadsWidget />
         )}
       </div>
       {canSeeApprovals && (pa.pendingVerification > 0 || pa.pendingAuthorization > 0 || pa.pendingApproval > 0) && (
@@ -720,20 +771,44 @@ function FullDashboard() {
         </Card>
       </div>
 
-      <CreateLeadDialog open={showCreateLead} onOpenChange={setShowCreateLead} />
+      {showCreateLead && <CreateLeadDialog open={showCreateLead} onOpenChange={setShowCreateLead} />}
 
-      <LeadsDrilldownDialog open={activeDrilldown === 'Total Leads'} onOpenChange={(open) => !open && setActiveDrilldown(null)} dateRange={dateRange} assignedTo={scopedAssignedTo} />
-      <RevenueDrilldownDialog open={activeDrilldown === 'Total Revenue'} onOpenChange={(open) => !open && setActiveDrilldown(null)} dateRange={dateRange} assignedTo={scopedAssignedTo} />
-      <CustomersDrilldownDialog open={activeDrilldown === 'Total Customers'} onOpenChange={(open) => !open && setActiveDrilldown(null)} dateRange={dateRange} assignedTo={scopedAssignedTo} />
-      <QuotationsDrilldownDialog open={activeDrilldown === 'Pending Quotations'} onOpenChange={(open) => !open && setActiveDrilldown(null)} dateRange={dateRange} assignedTo={scopedAssignedTo} />
-      <DealsWonDrilldownDialog open={activeDrilldown === 'Deals Won'} onOpenChange={(open) => !open && setActiveDrilldown(null)} dateRange={dateRange} assignedTo={scopedAssignedTo} />
-      <DraftPOsDrilldownDialog open={activeDrilldown === 'Draft POs'} onOpenChange={(open) => !open && setActiveDrilldown(null)} dateRange={dateRange} />
-      <PendingPOsDrilldownDialog open={activeDrilldown === 'Pending POs'} onOpenChange={(open) => !open && setActiveDrilldown(null)} dateRange={dateRange} />
-      <LowStockDrilldownDialog open={activeDrilldown === 'Low Stock Alerts'} onOpenChange={(open) => !open && setActiveDrilldown(null)} dateRange={dateRange} />
-      <SuppliersDrilldownDialog open={activeDrilldown === 'Active Suppliers'} onOpenChange={(open) => !open && setActiveDrilldown(null)} dateRange={dateRange} />
-      <InventoryDrilldownDialog open={activeDrilldown === 'Inventory Items'} onOpenChange={(open) => !open && setActiveDrilldown(null)} dateRange={dateRange} />
-      <ReceivablesDrilldownDialog open={activeDrilldown === 'Total Receivables'} onOpenChange={(open) => !open && setActiveDrilldown(null)} />
-      <OverduePaymentsDrilldownDialog open={activeDrilldown === 'Overdue Payments'} onOpenChange={(open) => !open && setActiveDrilldown(null)} />
+      {activeDrilldown === 'Total Leads' && (
+        <LeadsDrilldownDialog open={true} onOpenChange={(open) => !open && setActiveDrilldown(null)} dateRange={dateRange} assignedTo={scopedAssignedTo} />
+      )}
+      {activeDrilldown === 'Total Revenue' && (
+        <RevenueDrilldownDialog open={true} onOpenChange={(open) => !open && setActiveDrilldown(null)} dateRange={dateRange} assignedTo={scopedAssignedTo} />
+      )}
+      {activeDrilldown === 'Total Customers' && (
+        <CustomersDrilldownDialog open={true} onOpenChange={(open) => !open && setActiveDrilldown(null)} dateRange={dateRange} assignedTo={scopedAssignedTo} />
+      )}
+      {activeDrilldown === 'Pending Quotations' && (
+        <QuotationsDrilldownDialog open={true} onOpenChange={(open) => !open && setActiveDrilldown(null)} dateRange={dateRange} assignedTo={scopedAssignedTo} />
+      )}
+      {activeDrilldown === 'Deals Won' && (
+        <DealsWonDrilldownDialog open={true} onOpenChange={(open) => !open && setActiveDrilldown(null)} dateRange={dateRange} assignedTo={scopedAssignedTo} />
+      )}
+      {activeDrilldown === 'Draft POs' && (
+        <DraftPOsDrilldownDialog open={true} onOpenChange={(open) => !open && setActiveDrilldown(null)} dateRange={dateRange} />
+      )}
+      {activeDrilldown === 'Pending POs' && (
+        <PendingPOsDrilldownDialog open={true} onOpenChange={(open) => !open && setActiveDrilldown(null)} dateRange={dateRange} />
+      )}
+      {activeDrilldown === 'Low Stock Alerts' && (
+        <LowStockDrilldownDialog open={true} onOpenChange={(open) => !open && setActiveDrilldown(null)} dateRange={dateRange} />
+      )}
+      {activeDrilldown === 'Active Suppliers' && (
+        <SuppliersDrilldownDialog open={true} onOpenChange={(open) => !open && setActiveDrilldown(null)} dateRange={dateRange} />
+      )}
+      {activeDrilldown === 'Inventory Items' && (
+        <InventoryDrilldownDialog open={true} onOpenChange={(open) => !open && setActiveDrilldown(null)} dateRange={dateRange} />
+      )}
+      {activeDrilldown === 'Total Receivables' && (
+        <ReceivablesDrilldownDialog open={true} onOpenChange={(open) => !open && setActiveDrilldown(null)} />
+      )}
+      {activeDrilldown === 'Overdue Payments' && (
+        <OverduePaymentsDrilldownDialog open={true} onOpenChange={(open) => !open && setActiveDrilldown(null)} />
+      )}
     </div>
   );
 }

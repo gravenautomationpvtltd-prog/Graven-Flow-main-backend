@@ -1,7 +1,8 @@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Badge } from '@/components/ui/badge';
-import { MessageCircle, Mail } from 'lucide-react';
+import { Mail } from 'lucide-react';
+import { WhatsAppIcon } from '@/components/icons/WhatsAppIcon';
 import type { UserOutreachStats } from '@/hooks/useOutreachAnalytics';
 
 interface OutreachByUserTableProps {
@@ -36,7 +37,7 @@ export function OutreachByUserTable({ data, isLoading }: OutreachByUserTableProp
             <TableHead>Team Member</TableHead>
             <TableHead className="text-center">
               <div className="flex items-center justify-center gap-1">
-                <MessageCircle className="h-4 w-4 text-green-500" />
+                <WhatsAppIcon className="h-4 w-4 text-green-500" />
                 WhatsApp
               </div>
             </TableHead>

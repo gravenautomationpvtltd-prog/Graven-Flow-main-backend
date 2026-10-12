@@ -1,7 +1,8 @@
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
-import { MessageCircle, Mail, Target, History, ChevronDown } from 'lucide-react';
+import { Mail, Target, History, ChevronDown } from 'lucide-react';
+import { WhatsAppIcon } from '@/components/icons/WhatsAppIcon';
 import { Link } from 'react-router-dom';
 import { useCustomerOutreachHistoryByCustomer, useMarkOutreachResponse } from '@/hooks/useCustomerOutreach';
 import { format } from 'date-fns';
@@ -79,7 +80,7 @@ export function CustomerOutreachSection({ customerId }: CustomerOutreachSectionP
                 <div className="space-y-2">
                   {entry.whatsapp_sent_at && (
                     <div className="flex items-center gap-2 flex-wrap">
-                      <MessageCircle className="h-4 w-4 text-green-600" />
+                      <WhatsAppIcon className="h-4 w-4 text-green-600" />
                       <span className="text-sm">WhatsApp sent at {formatTime(entry.whatsapp_sent_at)}</span>
                       {entry.whatsapp_response_at ? (
                         <Badge 
@@ -104,7 +105,7 @@ export function CustomerOutreachSection({ customerId }: CustomerOutreachSectionP
                               onClick={() => handleMarkResponse(entry.id, 'whatsapp')}
                               className="cursor-pointer"
                             >
-                              <MessageCircle className="h-4 w-4 mr-2 text-green-600" />
+                              <WhatsAppIcon className="h-4 w-4 mr-2 text-green-600" />
                               Mark WhatsApp Response
                             </DropdownMenuItem>
                             <DropdownMenuItem 
@@ -147,7 +148,7 @@ export function CustomerOutreachSection({ customerId }: CustomerOutreachSectionP
                               onClick={() => handleMarkResponse(entry.id, 'whatsapp')}
                               className="cursor-pointer"
                             >
-                              <MessageCircle className="h-4 w-4 mr-2 text-green-600" />
+                              <WhatsAppIcon className="h-4 w-4 mr-2 text-green-600" />
                               Mark WhatsApp Response
                             </DropdownMenuItem>
                             <DropdownMenuItem 

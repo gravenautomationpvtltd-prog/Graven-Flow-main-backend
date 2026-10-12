@@ -1,5 +1,5 @@
 import { useParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft, Users2, Phone, TrendingUp, ShoppingCart, IndianRupee, Clock, AlertCircle } from 'lucide-react';
+import { ArrowLeft, Users2, Phone, TrendingUp, ShoppingCart, IndianRupee, Clock, AlertCircle, Eye } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -9,6 +9,7 @@ import { Progress } from '@/components/ui/progress';
 import { useCRODetail } from '@/hooks/useCRODetail';
 import { formatDistanceToNow, format } from 'date-fns';
 import { formatCurrencyWithSymbol } from '@/lib/currency-utils';
+import { CopyableText, CopyablePhone } from '@/components/shared/CopyableText';
 
 const statusColors: Record<string, string> = {
   pending: 'bg-muted text-muted-foreground',
@@ -145,12 +146,18 @@ export default function CROPerformanceDetail() {
                   ) : assignments.map((a) => (
                     <TableRow key={a.id}>
                       <TableCell>
-                        <p className="font-medium text-foreground">{a.customer.company_name}</p>
-                        <p className="text-xs text-muted-foreground md:hidden">{a.customer.contact_person}</p>
+                        <p className="font-medium text-foreground"><CopyableText text={a.customer.company_name} /></p>
+                        {a.customer.contact_person && (
+                          <p className="text-xs text-muted-foreground md:hidden"><CopyableText text={a.customer.contact_person} /></p>
+                        )}
                       </TableCell>
                       <TableCell className="hidden md:table-cell">
-                        <p className="text-sm">{a.customer.contact_person || '—'}</p>
-                        <p className="text-xs text-muted-foreground">{a.customer.phone}</p>
+                        {a.customer.contact_person && (
+                          <div className="text-sm"><CopyableText text={a.customer.contact_person} /></div>
+                        )}
+                        {a.customer.phone && (
+                          <div className="text-xs text-muted-foreground mt-0.5"><CopyablePhone phone={a.customer.phone} /></div>
+                        )}
                       </TableCell>
                       <TableCell className="hidden md:table-cell text-sm text-muted-foreground">
                         {[a.customer.city, a.customer.state].filter(Boolean).join(', ') || '—'}
@@ -188,15 +195,20 @@ export default function CROPerformanceDetail() {
                     <TableHead className="hidden md:table-cell">Salesperson</TableHead>
                     <TableHead className="hidden md:table-cell">Value</TableHead>
                     <TableHead className="hidden lg:table-cell">Created</TableHead>
+                    <TableHead className="w-[80px] text-right">Actions</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {leads.length === 0 ? (
-                    <TableRow><TableCell colSpan={6} className="text-center text-muted-foreground py-8">No enquiries generated</TableCell></TableRow>
+                    <TableRow><TableCell colSpan={7} className="text-center text-muted-foreground py-8">No enquiries generated</TableCell></TableRow>
                   ) : leads.map((l) => (
-                    <TableRow key={l.id} className="cursor-pointer hover:bg-muted/50" onClick={() => window.open(`/leads/${l.id}`, '_blank')}>
-                      <TableCell className="font-medium text-foreground">{l.title}</TableCell>
-                      <TableCell className="text-sm">{l.customer_name}</TableCell>
+                    <TableRow key={l.id}>
+                      <TableCell className="font-medium text-foreground">
+                        <CopyableText text={l.title} />
+                      </TableCell>
+                      <TableCell className="text-sm">
+                        {l.customer_name ? <CopyableText text={l.customer_name} /> : '—'}
+                      </TableCell>
                       <TableCell>
                         <Badge className={`text-xs ${leadStatusColors[l.status] || ''}`} variant="outline">
                           {l.status}
@@ -205,6 +217,16 @@ export default function CROPerformanceDetail() {
                       <TableCell className="hidden md:table-cell text-sm text-muted-foreground">{l.assigned_to_name || '—'}</TableCell>
                       <TableCell className="hidden md:table-cell text-sm">{l.estimated_value ? formatCurrencyWithSymbol(l.estimated_value, 'INR') : '—'}</TableCell>
                       <TableCell className="hidden lg:table-cell text-xs text-muted-foreground">{format(new Date(l.created_at), 'dd MMM yyyy')}</TableCell>
+                      <TableCell className="text-right">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-8 px-2 text-xs"
+                          onClick={() => window.open(`/leads/${l.id}`, '_blank')}
+                        >
+                          <Eye className="h-3.5 w-3.5 mr-1" /> View
+                        </Button>
+                      </TableCell>
                     </TableRow>
                   ))}
                 </TableBody>
@@ -224,18 +246,33 @@ export default function CROPerformanceDetail() {
                     <TableHead>Value</TableHead>
                     <TableHead>Status</TableHead>
                     <TableHead className="hidden md:table-cell">Created</TableHead>
+                    <TableHead className="w-[80px] text-right">Actions</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {orders.length === 0 ? (
-                    <TableRow><TableCell colSpan={5} className="text-center text-muted-foreground py-8">No converted orders</TableCell></TableRow>
+                    <TableRow><TableCell colSpan={6} className="text-center text-muted-foreground py-8">No converted orders</TableCell></TableRow>
                   ) : orders.map((o) => (
-                    <TableRow key={o.id} className="cursor-pointer hover:bg-muted/50" onClick={() => window.open(`/orders/${o.id}`, '_blank')}>
-                      <TableCell className="font-medium text-foreground">{o.order_number}</TableCell>
-                      <TableCell className="text-sm">{o.customer_name || '—'}</TableCell>
+                    <TableRow key={o.id}>
+                      <TableCell className="font-medium text-foreground">
+                        <CopyableText text={o.order_number} />
+                      </TableCell>
+                      <TableCell className="text-sm">
+                        {o.customer_name ? <CopyableText text={o.customer_name} /> : '—'}
+                      </TableCell>
                       <TableCell className="text-sm font-medium">{o.order_value ? formatCurrencyWithSymbol(o.order_value, 'INR') : '—'}</TableCell>
                       <TableCell><Badge variant="outline" className="text-xs">{o.status}</Badge></TableCell>
                       <TableCell className="hidden md:table-cell text-xs text-muted-foreground">{format(new Date(o.created_at), 'dd MMM yyyy')}</TableCell>
+                      <TableCell className="text-right">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-8 px-2 text-xs"
+                          onClick={() => window.open(`/orders/${o.id}`, '_blank')}
+                        >
+                          <Eye className="h-3.5 w-3.5 mr-1" /> View
+                        </Button>
+                      </TableCell>
                     </TableRow>
                   ))}
                 </TableBody>

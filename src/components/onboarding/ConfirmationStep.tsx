@@ -10,13 +10,6 @@ interface Props {
   onLaunch: () => void;
 }
 
-const PLAN_LABELS: Record<string, string> = {
-  trial: 'Free Demo (30 days)',
-  monthly: 'Monthly — ₹1,500/user/mo',
-  half_yearly: 'Half-Yearly — ₹1,200/user/mo',
-  annual: 'Annual — ₹750/user/mo',
-};
-
 export function ConfirmationStep({ data, onBack, onLaunch }: Props) {
   const { t } = useTranslation();
 
@@ -62,12 +55,6 @@ export function ConfirmationStep({ data, onBack, onLaunch }: Props) {
           </Card>
         )}
 
-        <Card className="border-border">
-          <CardContent className="p-5 space-y-1">
-            <h3 className="font-semibold text-foreground text-sm">{t('onboarding.step_plan', 'Plan')}</h3>
-            <p className="text-sm text-foreground">{PLAN_LABELS[data.plan]}</p>
-          </CardContent>
-        </Card>
       </div>
 
       <div className="flex justify-between">

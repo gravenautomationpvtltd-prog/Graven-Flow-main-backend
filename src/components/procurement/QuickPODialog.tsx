@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -38,6 +38,14 @@ export function QuickPODialog({ open, onOpenChange, items }: QuickPODialogProps)
   const [expectedDelivery, setExpectedDelivery] = useState('');
   const [notes, setNotes] = useState('');
   const [poItems, setPoItems] = useState<POItem[]>([]);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const formSubmissionIdRef = useRef<string>(crypto.randomUUID());
+
+  useEffect(() => {
+    if (open) {
+      formSubmissionIdRef.current = crypto.randomUUID();
+    }
+  }, [open]);
 
   useEffect(() => {
     if (items.length > 0) {
@@ -72,30 +80,37 @@ export function QuickPODialog({ open, onOpenChange, items }: QuickPODialogProps)
   };
 
   const handleSubmit = async () => {
-    if (!supplierId) return;
+    if (isSubmitting || createPO.isPending || !supplierId) return;
 
     const validItems = poItems.filter(item => item.quantity > 0);
     if (validItems.length === 0) return;
 
-    await createPO.mutateAsync({
-      supplier_id: supplierId,
-      expected_delivery: expectedDelivery || null,
-      notes: notes || null,
-      items: validItems.map(item => ({
-        product_id: item.productId,
-        description: item.productName,
-        hsn_code: null,
-        quantity: item.quantity,
-        rate: item.rate,
-        tax_percent: 18,
-        tax_amount: (item.quantity * item.rate * 18) / 100,
-        amount: item.quantity * item.rate,
-        received_quantity: 0,
-        sort_order: 0,
-      })),
-    });
+    setIsSubmitting(true);
+    try {
+      await createPO.mutateAsync({
+        supplier_id: supplierId,
+        expected_delivery: expectedDelivery || null,
+        notes: notes || null,
+        idempotency_key: formSubmissionIdRef.current,
+        items: validItems.map(item => ({
+          product_id: item.productId,
+          description: item.productName,
+          hsn_code: null,
+          quantity: item.quantity,
+          rate: item.rate,
+          tax_percent: 18,
+          tax_amount: (item.quantity * item.rate * 18) / 100,
+          amount: item.quantity * item.rate,
+          received_quantity: 0,
+          sort_order: 0,
+        })),
+      });
 
-    onOpenChange(false);
+      formSubmissionIdRef.current = crypto.randomUUID();
+      onOpenChange(false);
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   const totalAmount = poItems.reduce((sum, item) => sum + (item.quantity * item.rate), 0);
@@ -223,9 +238,9 @@ export function QuickPODialog({ open, onOpenChange, items }: QuickPODialogProps)
           </Button>
           <Button 
             onClick={handleSubmit} 
-            disabled={createPO.isPending || !supplierId || poItems.every(i => i.quantity === 0)}
+            disabled={isSubmitting || createPO.isPending || !supplierId || poItems.every(i => i.quantity === 0)}
           >
-            {createPO.isPending ? 'Creating...' : 'Create PO'}
+            {isSubmitting || createPO.isPending ? 'Creating...' : 'Create PO'}
           </Button>
         </DialogFooter>
       </DialogContent>

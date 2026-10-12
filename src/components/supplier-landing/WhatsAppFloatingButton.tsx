@@ -1,4 +1,4 @@
-import { MessageCircle } from 'lucide-react';
+import { WhatsAppIcon } from '@/components/icons/WhatsAppIcon';
 import { motion } from 'framer-motion';
 
 export function WhatsAppFloatingButton() {
@@ -15,7 +15,7 @@ export function WhatsAppFloatingButton() {
       whileTap={{ scale: 0.95 }}
       aria-label="Chat on WhatsApp"
     >
-      <MessageCircle className="w-7 h-7 text-white" fill="white" />
+      <WhatsAppIcon className="w-7 h-7 text-white" />
     </motion.a>
   );
 }

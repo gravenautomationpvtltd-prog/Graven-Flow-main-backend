@@ -10,6 +10,7 @@ import { Clock, Play, Pause, RefreshCw, Loader2, History, AlertTriangle } from "
 import { formatDistanceToNow } from "date-fns";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
+import { syncSupabase } from "@/integrations/supabase/syncClient";
 
 interface AutoSyncControlsProps {
   integrationType: IntegrationType;
@@ -213,12 +214,27 @@ export function AutoSyncControls({
     try {
       const functionName = integrationType === 'tradeindia' ? 'tradeindia-leads' : 'indiamart-leads';
       
-      const { data, error } = await supabase.functions.invoke(functionName, {
+      let res = await supabase.functions.invoke(functionName, {
         body: { 
           recovery_hours: parseInt(recoveryHours), 
           force: true 
         }
       });
+
+      if (res.error) {
+        console.warn(`Primary recovery invocation for ${functionName} failed, falling back to syncSupabase...`, res.error);
+        const fallbackRes = await syncSupabase.functions.invoke(functionName, {
+          body: { 
+            recovery_hours: parseInt(recoveryHours), 
+            force: true 
+          }
+        });
+        if (!fallbackRes.error) {
+          res = fallbackRes;
+        }
+      }
+
+      const { data, error } = res;
 
       if (error) {
         console.error("Recovery sync error:", error);

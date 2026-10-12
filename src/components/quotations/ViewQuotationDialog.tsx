@@ -7,7 +7,6 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { 
   Download, 
-  MessageSquare, 
   Mail, 
   Edit, 
   Clock, 
@@ -24,6 +23,7 @@ import {
   GitBranch,
   Scale
 } from 'lucide-react';
+import { WhatsAppIcon } from '@/components/icons/WhatsAppIcon';
 import { useState } from 'react';
 import { useCanViewPriceComparison } from '@/hooks/useCanViewPriceComparison';
 import { PriceComparisonSheetDialog } from './PriceComparisonSheetDialog';
@@ -318,6 +318,25 @@ export function ViewQuotationDialog({
                                     {display.description}
                                   </div>
                                 )}
+                                {(item.dimensions || (item as any).unit_weight_kg || (item as any).weight_kg) && (
+                                  <div className="mt-1.5 flex flex-wrap gap-2 text-[11px] text-muted-foreground font-mono">
+                                    {item.dimensions && (
+                                      <span className="inline-flex items-center px-1.5 py-0.5 rounded bg-muted">
+                                        Dim: {item.dimensions}
+                                      </span>
+                                    )}
+                                    {((item as any).unit_weight_kg || (item as any).weight_kg) && (
+                                      <span className="inline-flex items-center px-1.5 py-0.5 rounded bg-muted">
+                                        Unit Wt: {Number((item as any).unit_weight_kg ?? (item as any).weight_kg).toFixed(2)} kg
+                                      </span>
+                                    )}
+                                    {((item as any).total_weight_kg || ((item as any).unit_weight_kg && item.quantity)) && (
+                                      <span className="inline-flex items-center px-1.5 py-0.5 rounded bg-muted font-medium text-foreground">
+                                        Total Wt: {Number((item as any).total_weight_kg ?? ((item as any).unit_weight_kg * item.quantity)).toFixed(2)} kg
+                                      </span>
+                                    )}
+                                  </div>
+                                )}
                               </td>
                               <td className="p-3 text-muted-foreground">{item.hsn_code || '-'}</td>
                               <td className="p-3 text-right">{item.quantity} {item.unit}</td>
@@ -348,6 +367,19 @@ export function ViewQuotationDialog({
                       <span className="text-muted-foreground">Tax (GST)</span>
                       <span>{formatCurrency(quotation.total_tax)}</span>
                     </div>
+                    {(() => {
+                      const totalWeight = (quotation.items || []).reduce((sum, item: any) => {
+                        const wt = item.total_weight_kg ?? ((item.unit_weight_kg || item.weight_kg) ? Number(item.unit_weight_kg || item.weight_kg) * (item.quantity || 0) : 0);
+                        return sum + (Number(wt) || 0);
+                      }, 0);
+                      if (totalWeight <= 0) return null;
+                      return (
+                        <div className="flex justify-between text-sm text-muted-foreground pb-0.5">
+                          <span>Total Est. Weight</span>
+                          <span className="font-mono font-medium text-foreground">{totalWeight.toFixed(2)} kg</span>
+                        </div>
+                      );
+                    })()}
                     <Separator />
                     <div className="flex justify-between font-semibold text-lg">
                       <span>Grand Total</span>
@@ -490,7 +522,7 @@ export function ViewQuotationDialog({
             </DropdownMenu>
             {quotation.customer?.phone && (
               <Button variant="outline" className="text-green-600 hover:text-green-700" onClick={onSendWhatsApp}>
-                <MessageSquare className="h-4 w-4 mr-2" />
+                <WhatsAppIcon className="h-4 w-4 mr-2" />
                 WhatsApp
               </Button>
             )}

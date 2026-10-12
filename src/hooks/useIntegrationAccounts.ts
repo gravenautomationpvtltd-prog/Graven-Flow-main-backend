@@ -1,5 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
+import { syncSupabase } from "@/integrations/supabase/syncClient";
 import { toast } from "sonner";
 import { IntegrationType } from "./useIntegrations";
 import { requireTenantId } from '@/utils/tenantUtils';
@@ -165,12 +166,22 @@ export function useSyncIntegrationAccount() {
           throw new Error(`Sync not supported for ${integrationType}`);
       }
 
-      const { data, error } = await supabase.functions.invoke(functionName, {
+      let res = await supabase.functions.invoke(functionName, {
         body: { account_id: accountId },
       });
 
-      if (error) throw error;
-      return data;
+      if (res.error) {
+        console.warn(`Primary invocation for ${functionName} failed, trying syncSupabase...`, res.error);
+        const fallbackRes = await syncSupabase.functions.invoke(functionName, {
+          body: { account_id: accountId },
+        });
+        if (!fallbackRes.error) {
+          res = fallbackRes;
+        }
+      }
+
+      if (res.error) throw res.error;
+      return res.data;
     },
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ['integration-accounts'] });

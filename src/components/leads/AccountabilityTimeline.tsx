@@ -2,7 +2,6 @@ import { format, formatDistanceToNow, differenceInMinutes } from 'date-fns';
 import { 
   Phone, 
   Mail, 
-  MessageCircle, 
   FileText, 
   Send, 
   CheckCircle, 
@@ -10,8 +9,10 @@ import {
   User,
   DollarSign,
   AlertCircle,
-  ArrowRight
+  ArrowRight,
+  MessageCircle
 } from 'lucide-react';
+import { WhatsAppIcon } from '@/components/icons/WhatsAppIcon';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -26,7 +27,7 @@ interface AccountabilityTimelineProps {
 const activityIcons: Record<string, React.ReactNode> = {
   call: <Phone className="h-4 w-4" />,
   email: <Mail className="h-4 w-4" />,
-  whatsapp: <MessageCircle className="h-4 w-4" />,
+  whatsapp: <WhatsAppIcon className="h-4 w-4" />,
   note: <FileText className="h-4 w-4" />,
   quotation: <FileText className="h-4 w-4" />,
   quotation_sent: <Send className="h-4 w-4" />,

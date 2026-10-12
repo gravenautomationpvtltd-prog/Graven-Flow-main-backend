@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
@@ -83,6 +83,15 @@ export function CreatePODialog({ open, onOpenChange, salesOrderId }: CreatePODia
     }
   }, [salesOrder]);
 
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const formSubmissionIdRef = useRef<string>(crypto.randomUUID());
+
+  useEffect(() => {
+    if (open) {
+      formSubmissionIdRef.current = crypto.randomUUID();
+    }
+  }, [open]);
+
   const selectedSupplier = suppliers.find(s => s.id === supplierId);
   
   // Check if any items have target rates
@@ -91,11 +100,16 @@ export function CreatePODialog({ open, onOpenChange, salesOrderId }: CreatePODia
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
+    if (isSubmitting || createPO.isPending) {
+      return;
+    }
+
     const validItems = items.filter(item => item.description.trim());
     if (validItems.length === 0) {
       return;
     }
 
+    setIsSubmitting(true);
     try {
       await createPO.mutateAsync({
         supplier_id: supplierId,
@@ -106,6 +120,7 @@ export function CreatePODialog({ open, onOpenChange, salesOrderId }: CreatePODia
         terms_conditions: terms || null,
         currency,
         exchange_rate: exchangeRate,
+        idempotency_key: formSubmissionIdRef.current,
         items: validItems.map(item => ({
           product_id: item.product_id,
           description: item.description,
@@ -119,10 +134,13 @@ export function CreatePODialog({ open, onOpenChange, salesOrderId }: CreatePODia
           sort_order: 0,
         })),
       });
+      formSubmissionIdRef.current = crypto.randomUUID();
       onOpenChange(false);
       resetForm();
     } catch (error) {
       // Error handled by mutation
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -313,8 +331,8 @@ export function CreatePODialog({ open, onOpenChange, salesOrderId }: CreatePODia
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
               Cancel
             </Button>
-            <Button type="submit" disabled={createPO.isPending || !supplierId}>
-              {createPO.isPending ? 'Creating...' : 'Create PO'}
+            <Button type="submit" disabled={isSubmitting || createPO.isPending || !supplierId}>
+              {isSubmitting || createPO.isPending ? 'Creating...' : 'Create PO'}
             </Button>
           </DialogFooter>
         </form>

@@ -3,10 +3,14 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { LeadSourceBadge } from '@/components/leads/LeadSourceBadge';
+import { CopyableText, CopyablePhone } from '@/components/shared/CopyableText';
 import { QualifyLeadDialog } from '@/components/leads/QualifyLeadDialog';
+import { LqtWorkflowModal } from '@/components/lqt/LqtWorkflowModal';
+import { DeleteLeadDialog } from '@/components/lqt/DeleteLeadDialog';
+import { useDeleteLqtLead } from '@/hooks/useDeleteLqtLead';
 import { useNavigate } from 'react-router-dom';
-import { CheckCircle2, Cog, XCircle, Clock, Inbox, UserCheck } from 'lucide-react';
-import { formatDistanceToNow } from 'date-fns';
+import { CheckCircle2, Cog, XCircle, Clock, Inbox, UserCheck, Sparkles, Trash2 } from 'lucide-react';
+import { formatISTDate, formatISTTime, formatISTDateTime, formatISTRelativeTime } from '@/lib/date-utils';
 import type { LqtLead, LqtTab } from '@/hooks/useLqtLeads';
 
 interface LqtLeadTableProps {
@@ -34,7 +38,10 @@ function slaTone(hours: number): string {
 
 export function LqtLeadTable({ leads, tab, isLoading }: LqtLeadTableProps) {
   const navigate = useNavigate();
+  const { canDeleteLead } = useDeleteLqtLead();
   const [qualifyId, setQualifyId] = useState<string | null>(null);
+  const [workflowLead, setWorkflowLead] = useState<LqtLead | null>(null);
+  const [leadToDelete, setLeadToDelete] = useState<LqtLead | null>(null);
 
   if (isLoading) {
     return (
@@ -72,7 +79,7 @@ export function LqtLeadTable({ leads, tab, isLoading }: LqtLeadTableProps) {
               <TableHead>Requirement</TableHead>
               <TableHead className="w-[140px]">{tab === 'pending' ? 'Received / SLA' : 'Received'}</TableHead>
               {tab !== 'pending' && <TableHead className="w-[140px]">Outcome</TableHead>}
-              <TableHead className="w-[160px] text-right">Action</TableHead>
+              <TableHead className="w-[220px] text-right">Action</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -85,24 +92,43 @@ export function LqtLeadTable({ leads, tab, isLoading }: LqtLeadTableProps) {
                   <TableCell>
                     <LeadSourceBadge source={lead.source} />
                   </TableCell>
-                  <TableCell className="max-w-[200px]">
-                    <div className="font-medium text-sm truncate">
-                      {lead.customer?.company_name || lead.title}
-                    </div>
-                    {lead.customer?.contact_person && (
-                      <div className="text-xs text-muted-foreground truncate">
-                        {lead.customer.contact_person}
+                  <TableCell className="max-w-[220px]">
+                    <div className="flex flex-col gap-0.5">
+                      <CopyableText
+                        text={lead.customer?.company_name || lead.title}
+                        label="company name"
+                        textClassName="font-medium text-sm text-foreground"
+                      />
+                      {lead.customer?.contact_person && (
+                        <CopyableText
+                          text={lead.customer.contact_person}
+                          label="contact person"
+                          textClassName="text-xs text-muted-foreground"
+                        />
+                      )}
+                      <div className="text-xs text-muted-foreground flex items-center gap-1.5 flex-wrap">
+                        {lead.customer?.phone ? (
+                          <CopyablePhone phone={lead.customer.phone} />
+                        ) : (
+                          <span>—</span>
+                        )}
+                        {lead.customer?.city && (
+                          <span className="flex items-center gap-1">
+                            • <CopyableText text={lead.customer.city} label="city" textClassName="text-xs text-muted-foreground" />
+                          </span>
+                        )}
                       </div>
-                    )}
-                    <div className="text-xs text-muted-foreground truncate">
-                      {lead.customer?.phone || '—'}
-                      {lead.customer?.city && ` • ${lead.customer.city}`}
                     </div>
                   </TableCell>
                   <TableCell className="max-w-[280px]">
-                    <p className="text-sm truncate" title={lead.customer_query || lead.title}>
-                      {lead.customer_query || lead.title}
-                    </p>
+                    <CopyableText
+                      text={lead.customer_query || lead.title}
+                      label="enquiry text"
+                      title={lead.customer_query || lead.title}
+                      textClassName="text-sm text-foreground"
+                      truncate
+                      className="max-w-full"
+                    />
                     {lead.suggested_assignee?.full_name && (
                       <Badge variant="outline" className="mt-1 text-[10px] h-5 bg-primary/5 text-primary border-primary/20">
                         <UserCheck className="h-2.5 w-2.5 mr-1" />
@@ -110,16 +136,15 @@ export function LqtLeadTable({ leads, tab, isLoading }: LqtLeadTableProps) {
                       </Badge>
                     )}
                   </TableCell>
-                  <TableCell>
-                    {tab === 'pending' ? (
-                      <div className={`text-xs ${slaTone(hours)}`}>
-                        {formatDistanceToNow(new Date(lead.created_at), { addSuffix: true })}
-                      </div>
-                    ) : (
-                      <div className="text-xs text-muted-foreground">
-                        {formatDistanceToNow(new Date(lead.created_at), { addSuffix: true })}
-                      </div>
-                    )}
+                  <TableCell title={formatISTDateTime(lead.created_at)}>
+                    <div className="flex flex-col">
+                      <span className={`text-xs ${tab === 'pending' ? slaTone(hours) : 'text-foreground font-medium'}`}>
+                        {formatISTRelativeTime(lead.created_at)}
+                      </span>
+                      <span className="text-[10px] text-muted-foreground whitespace-nowrap">
+                        {formatISTDate(lead.created_at, 'medium')}, {formatISTTime(lead.created_at)}
+                      </span>
+                    </div>
                   </TableCell>
                   {tab !== 'pending' && (
                     <TableCell>
@@ -132,21 +157,42 @@ export function LqtLeadTable({ leads, tab, isLoading }: LqtLeadTableProps) {
                     </TableCell>
                   )}
                   <TableCell className="text-right">
-                    <div className="flex justify-end gap-2">
+                    <div className="flex justify-end gap-1.5">
                       <Button
                         size="sm"
-                        variant="ghost"
-                        onClick={() => navigate(`/leads/${lead.id}`)}
+                        variant="outline"
+                        className="h-8 text-xs font-medium"
+                        onClick={() => navigate(`/leads/${lead.id}?from=/lqt-inbox`)}
                       >
                         Open
                       </Button>
                       <Button
                         size="sm"
-                        variant={tab === 'pending' ? 'default' : 'outline'}
+                        variant="default"
+                        className="gap-1 h-8 text-xs bg-primary hover:bg-primary/90"
+                        onClick={() => setWorkflowLead(lead)}
+                      >
+                        <Sparkles className="h-3 w-3" /> Actions
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="h-8 text-xs"
                         onClick={() => setQualifyId(lead.id)}
                       >
                         {tab === 'pending' ? 'Qualify' : 'Re-route'}
                       </Button>
+                      {canDeleteLead(lead.assigned_to) && (
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className="h-8 w-8 p-0 text-muted-foreground hover:text-destructive hover:bg-destructive/10"
+                          title="Delete Lead"
+                          onClick={() => setLeadToDelete(lead)}
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </Button>
+                      )}
                     </div>
                   </TableCell>
                 </TableRow>
@@ -163,6 +209,23 @@ export function LqtLeadTable({ leads, tab, isLoading }: LqtLeadTableProps) {
           leadId={qualifyId}
         />
       )}
+
+      {workflowLead && (
+        <LqtWorkflowModal
+          open={!!workflowLead}
+          onOpenChange={(o) => !o && setWorkflowLead(null)}
+          lead={workflowLead}
+          onOpenQualifyDialog={(id) => setQualifyId(id)}
+          onDeleteLead={() => setLeadToDelete(workflowLead)}
+        />
+      )}
+
+      <DeleteLeadDialog
+        open={!!leadToDelete}
+        onOpenChange={(o) => !o && setLeadToDelete(null)}
+        lead={leadToDelete}
+        onDeleted={() => setLeadToDelete(null)}
+      />
     </>
   );
 }

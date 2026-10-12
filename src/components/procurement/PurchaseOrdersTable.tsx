@@ -22,6 +22,7 @@ import { ViewPODialog } from './ViewPODialog';
 import { EditPODialog } from './EditPODialog';
 import { useAuth } from '@/hooks/useAuth';
 import { DoubleConfirmDeleteDialog } from '@/components/ui/double-confirm-delete-dialog';
+import { CopyableText } from '@/components/shared/CopyableText';
 
 interface PurchaseOrdersTableProps {
   searchQuery?: string;
@@ -140,11 +141,11 @@ export function PurchaseOrdersTable({ searchQuery = '', statusFilter = 'all' }: 
           </TableHeader>
           <TableBody>
             {filteredPOs.map((po) => (
-              <TableRow key={po.id} className="cursor-pointer" onClick={() => handleView(po)}>
+              <TableRow key={po.id} className="hover:bg-muted/40 transition-colors">
                 <TableCell>
                   <div className="flex items-center gap-2">
-                    <FileText className="h-4 w-4 text-muted-foreground" />
-                    <span className="font-medium">{po.po_number}</span>
+                    <FileText className="h-4 w-4 text-muted-foreground shrink-0" />
+                    <CopyableText text={po.po_number} label="PO number" textClassName="font-medium" />
                     {(po as any).supplier_quotation_id && (
                       <Badge variant="outline" className="text-xs bg-green-50 text-green-700 border-green-200">
                         From RFQ
@@ -153,7 +154,7 @@ export function PurchaseOrdersTable({ searchQuery = '', statusFilter = 'all' }: 
                   </div>
                 </TableCell>
                 <TableCell>
-                  {po.supplier?.name || '-'}
+                  <CopyableText text={po.supplier?.name} label="supplier name" />
                 </TableCell>
                 <TableCell>
                   {po.order_date ? format(new Date(po.order_date), 'dd MMM yyyy') : '-'}
@@ -170,12 +171,22 @@ export function PurchaseOrdersTable({ searchQuery = '', statusFilter = 'all' }: 
                   ₹{po.grand_total.toFixed(2)}
                 </TableCell>
                 <TableCell className="text-right">
-                  <DropdownMenu>
-                    <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
-                      <Button variant="ghost" size="icon">
-                        <MoreHorizontal className="h-4 w-4" />
-                      </Button>
-                    </DropdownMenuTrigger>
+                  <div className="flex items-center justify-end gap-1">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="h-8 px-2.5 text-xs font-medium gap-1 hover:bg-primary hover:text-primary-foreground transition-colors"
+                      onClick={() => handleView(po)}
+                    >
+                      <Eye className="h-3.5 w-3.5" />
+                      View
+                    </Button>
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
+                        <Button variant="ghost" size="icon" className="h-8 w-8">
+                          <MoreHorizontal className="h-4 w-4" />
+                        </Button>
+                      </DropdownMenuTrigger>
                     <DropdownMenuContent align="end">
                       <DropdownMenuItem onClick={(e) => { e.stopPropagation(); handleView(po); }}>
                         <Eye className="mr-2 h-4 w-4" />
@@ -206,6 +217,7 @@ export function PurchaseOrdersTable({ searchQuery = '', statusFilter = 'all' }: 
                       )}
                     </DropdownMenuContent>
                   </DropdownMenu>
+                  </div>
                 </TableCell>
               </TableRow>
             ))}

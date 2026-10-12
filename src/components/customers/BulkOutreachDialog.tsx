@@ -4,7 +4,8 @@ import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Loader2, Send, MessageCircle, Mail } from 'lucide-react';
+import { Loader2, Send, Mail } from 'lucide-react';
+import { WhatsAppIcon } from '@/components/icons/WhatsAppIcon';
 import { useTriggerOutreach } from '@/hooks/useCustomerOutreach';
 import { Checkbox } from '@/components/ui/checkbox';
 
@@ -89,7 +90,7 @@ export function BulkOutreachDialog({ open, onOpenChange, retargetableCount }: Bu
               </label>
               <label className="flex items-center gap-2 cursor-pointer">
                 <Checkbox checked={sendWhatsapp} onCheckedChange={(c) => setSendWhatsapp(!!c)} />
-                <MessageCircle className="h-4 w-4" />
+                <WhatsAppIcon className="h-4 w-4 text-green-600" />
                 <span className="text-sm">WhatsApp</span>
               </label>
             </div>

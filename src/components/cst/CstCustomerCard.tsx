@@ -2,7 +2,9 @@ import { useState } from 'react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Phone, MessageCircle, Mail, MapPin, User, Star, CalendarClock, CheckCircle2, StickyNote, Plus, BellOff, History } from 'lucide-react';
+import { Phone, Mail, MapPin, User, Star, CalendarClock, CheckCircle2, StickyNote, Plus, BellOff, History, Eye } from 'lucide-react';
+import { WhatsAppIcon } from '@/components/icons/WhatsAppIcon';
+import { CopyableText, CopyablePhone, CopyableEmail } from '@/components/shared/CopyableText';
 import type { CstCustomer } from '@/hooks/useCstCustomers';
 import type { EngagementSummary } from '@/hooks/useCstEngagements';
 import { useLogEngagement, useToggleCstFlag } from '@/hooks/useCstEngagements';
@@ -75,24 +77,40 @@ export function CstCustomerCard({ customer, summary, onOpenPanel }: Props) {
         <CardContent className="p-4 space-y-3">
           {/* Header */}
           <div className="flex items-start justify-between gap-2">
-            <div className="min-w-0">
-              <button
-                onClick={() => onOpenPanel(customer)}
-                className="font-semibold text-left hover:text-primary truncate block"
-              >
-                {customer.company_name}
-              </button>
+            <div className="min-w-0 flex-1">
+              <CopyableText
+                text={customer.company_name}
+                label="company name"
+                textClassName="font-semibold text-base text-foreground"
+                truncate
+              />
               {customer.contact_person && (
-                <p className="text-xs text-muted-foreground flex items-center gap-1 truncate">
-                  <User className="h-3 w-3" /> {customer.contact_person}
-                </p>
+                <div className="flex items-center gap-1 text-xs text-muted-foreground mt-0.5">
+                  <User className="h-3 w-3 shrink-0" />
+                  <CopyableText
+                    text={customer.contact_person}
+                    label="contact person"
+                    textClassName="text-xs text-muted-foreground"
+                    truncate
+                  />
+                </div>
               )}
             </div>
-            <div className="flex flex-col items-end gap-1">
+            <div className="flex items-center gap-1.5 shrink-0">
               {engagementBadge}
+              <Button
+                size="icon"
+                variant="ghost"
+                className="h-7 w-7 text-muted-foreground hover:text-primary"
+                onClick={() => onOpenPanel(customer)}
+                title="View Customer Panel"
+              >
+                <Eye className="h-3.5 w-3.5" />
+              </Button>
               <button
                 onClick={() => toggleFlag.mutate({ customer_id: customer.id, field: 'cst_favourite', value: !customer.cst_favourite })}
                 aria-label="Toggle favourite"
+                className="p-1"
               >
                 <Star className={`h-4 w-4 ${customer.cst_favourite ? 'fill-yellow-400 text-yellow-400' : 'text-muted-foreground'}`} />
               </button>
@@ -100,21 +118,28 @@ export function CstCustomerCard({ customer, summary, onOpenPanel }: Props) {
           </div>
 
           {/* Contact */}
-          <div className="space-y-1 text-xs">
+          <div className="space-y-1.5 text-xs">
             {customer.phone && (
-              <a href={`tel:${customer.phone}`} className="flex items-center gap-1.5 text-primary hover:underline">
-                <Phone className="h-3 w-3" /> {customer.phone}
-              </a>
+              <div className="flex items-center gap-1.5">
+                <Phone className="h-3 w-3 text-muted-foreground shrink-0" />
+                <CopyablePhone phone={customer.phone} />
+              </div>
             )}
             {customer.email && (
-              <a href={`mailto:${customer.email}`} className="flex items-center gap-1.5 text-muted-foreground hover:text-foreground truncate">
-                <Mail className="h-3 w-3 flex-shrink-0" /> <span className="truncate">{customer.email}</span>
-              </a>
+              <div className="flex items-center gap-1.5">
+                <Mail className="h-3 w-3 text-muted-foreground shrink-0" />
+                <CopyableEmail email={customer.email} />
+              </div>
             )}
             {(customer.city || customer.state) && (
-              <p className="flex items-center gap-1.5 text-muted-foreground">
-                <MapPin className="h-3 w-3" /> {[customer.city, customer.state].filter(Boolean).join(', ')}
-              </p>
+              <div className="flex items-center gap-1.5 text-muted-foreground">
+                <MapPin className="h-3 w-3 shrink-0" />
+                <CopyableText
+                  text={[customer.city, customer.state].filter(Boolean).join(', ') || null}
+                  label="location"
+                  textClassName="text-xs text-muted-foreground"
+                />
+              </div>
             )}
             {customer.owner_name && (
               <p className="text-muted-foreground">Sales: <span className="font-medium text-foreground">{customer.owner_name}</span></p>
@@ -153,7 +178,7 @@ export function CstCustomerCard({ customer, summary, onOpenPanel }: Props) {
             <Button size="sm" variant="ghost" onClick={() => openLog('whatsapp')} title="Log WhatsApp" asChild>
               <a href={customer.phone ? waLink(customer.phone) : '#'} target="_blank" rel="noreferrer"
                 onClick={(e) => { e.stopPropagation(); }}>
-                <MessageCircle className="h-3.5 w-3.5" />
+                <WhatsAppIcon className="h-3.5 w-3.5 text-green-600" />
               </a>
             </Button>
             <Button size="sm" variant="ghost" onClick={() => openLog('email')} title="Log email">

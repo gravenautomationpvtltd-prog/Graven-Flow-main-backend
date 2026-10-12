@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
@@ -71,6 +71,14 @@ export function AwardQuotationDialog({ open, onOpenChange, quotationId }: AwardQ
   }>>([]);
   const [notes, setNotes] = useState('');
   const [expectedDelivery, setExpectedDelivery] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const submissionIdRef = useRef<string>(crypto.randomUUID());
+
+  useEffect(() => {
+    if (open) {
+      submissionIdRef.current = crypto.randomUUID();
+    }
+  }, [open]);
 
   useEffect(() => {
     if (quotation) {
@@ -102,14 +110,16 @@ export function AwardQuotationDialog({ open, onOpenChange, quotationId }: AwardQ
   const grandTotal = subtotal + totalTax;
 
   const handleConfirm = async () => {
-    if (!quotation) return;
+    if (!quotation || isSubmitting || createPOFromQuotation.isPending) return;
 
     const supplier = quotation.suppliers as { id: string } | null;
+    setIsSubmitting(true);
     
     createPOFromQuotation.mutate({
       quotationId: quotation.id,
       rfqId: quotation.rfq_id,
       poData: {
+        idempotency_key: `award_${quotation.id}_${submissionIdRef.current}`,
         supplier_id: supplier?.id || null,
         order_date: new Date().toISOString().split('T')[0],
         expected_delivery: expectedDelivery || null,
@@ -131,8 +141,12 @@ export function AwardQuotationDialog({ open, onOpenChange, quotationId }: AwardQ
       },
     }, {
       onSuccess: () => {
+        setIsSubmitting(false);
         onOpenChange(false);
         navigate('/procurement');
+      },
+      onError: () => {
+        setIsSubmitting(false);
       },
     });
   };
@@ -288,10 +302,10 @@ export function AwardQuotationDialog({ open, onOpenChange, quotationId }: AwardQ
           <Button variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
           <Button
             onClick={handleConfirm}
-            disabled={createPOFromQuotation.isPending || items.length === 0}
+            disabled={isSubmitting || createPOFromQuotation.isPending || items.length === 0}
             className="bg-green-600 hover:bg-green-700"
           >
-            {createPOFromQuotation.isPending ? (
+            {isSubmitting || createPOFromQuotation.isPending ? (
               <Loader2 className="mr-2 h-4 w-4 animate-spin" />
             ) : (
               <ArrowRight className="mr-2 h-4 w-4" />

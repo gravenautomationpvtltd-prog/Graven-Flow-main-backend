@@ -176,6 +176,23 @@ export function QuotationLineItem({
     if (product.lead_time_days !== null && product.lead_time_days !== undefined) {
       onUpdate(index, 'lead_time_days', product.lead_time_days);
     }
+    // Auto-populate dimensions and weight from product catalog
+    const hasDimensions = product.length_cm != null && product.width_cm != null && product.height_cm != null &&
+      Number(product.length_cm) > 0 && Number(product.width_cm) > 0 && Number(product.height_cm) > 0;
+    const autoDimensions = hasDimensions
+      ? `${product.length_cm} × ${product.width_cm} × ${product.height_cm} CM`
+      : null;
+    onUpdate(index, 'dimensions', autoDimensions);
+    onUpdate(index, 'length_cm', product.length_cm ?? null);
+    onUpdate(index, 'width_cm', product.width_cm ?? null);
+    onUpdate(index, 'height_cm', product.height_cm ?? null);
+
+    const unitWt = product.weight_kg != null && Number(product.weight_kg) > 0 ? Number(product.weight_kg) : null;
+    onUpdate(index, 'unit_weight_kg', unitWt);
+    onUpdate(index, 'weight_kg', unitWt);
+    const qty = Number(item.quantity) || 1;
+    const totalWt = unitWt !== null ? Math.round(unitWt * qty * 1000) / 1000 : null;
+    onUpdate(index, 'total_weight_kg', totalWt);
     // Stash internal list-price context so we can display the floor to internal user
     setProductLP({
       list_price: product.list_price ?? null,
@@ -422,7 +439,14 @@ export function QuotationLineItem({
               step="1"
               placeholder="Qty"
               value={item.quantity}
-              onChange={(e) => onUpdate(index, 'quantity', parseFloat(e.target.value) || 0)}
+              onChange={(e) => {
+                const nextQty = parseFloat(e.target.value) || 0;
+                onUpdate(index, 'quantity', nextQty);
+                const unitWt = item.unit_weight_kg ?? (item as any).weight_kg ?? null;
+                if (unitWt !== null && unitWt !== undefined) {
+                  onUpdate(index, 'total_weight_kg', Math.round(Number(unitWt) * nextQty * 1000) / 1000);
+                }
+              }}
               className="h-9 text-sm text-center"
             />
           </div>
@@ -556,6 +580,61 @@ export function QuotationLineItem({
             </div>
           </div>
         </div>
+        </div>
+
+        {/* Row 3 — Specifications & Weight */}
+        <div className="ml-10 mt-2.5 pt-2 border-t border-dashed border-border/60">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+            <div>
+              <label className="text-[10px] uppercase tracking-wide text-muted-foreground flex items-center gap-1">
+                Dimensions
+                <span className="text-[9px] lowercase text-muted-foreground/70">(L × W × H)</span>
+              </label>
+              <Input
+                placeholder="e.g. 10 × 5 × 2 CM"
+                value={item.dimensions || ''}
+                onChange={(e) => onUpdate(index, 'dimensions', e.target.value)}
+                className="h-8 text-xs font-mono"
+              />
+            </div>
+            <div>
+              <label className="text-[10px] uppercase tracking-wide text-muted-foreground flex items-center gap-1">
+                Unit Weight (kg)
+              </label>
+              <Input
+                type="number"
+                min="0"
+                step="0.001"
+                placeholder="kg / unit"
+                value={item.unit_weight_kg ?? (item as any).weight_kg ?? ''}
+                onChange={(e) => {
+                  const val = e.target.value === '' ? null : parseFloat(e.target.value);
+                  onUpdate(index, 'unit_weight_kg', val);
+                  onUpdate(index, 'weight_kg', val);
+                  const total = val !== null && !isNaN(val) ? Math.round(val * (item.quantity || 0) * 1000) / 1000 : null;
+                  onUpdate(index, 'total_weight_kg', total);
+                }}
+                className="h-8 text-xs font-mono"
+              />
+            </div>
+            <div>
+              <label className="text-[10px] uppercase tracking-wide text-muted-foreground flex items-center gap-1">
+                Total Weight (kg)
+              </label>
+              <div className="h-8 flex items-center justify-between px-2.5 bg-muted/40 border rounded-md text-xs font-mono">
+                <span className="text-muted-foreground text-[11px]">
+                  {item.unit_weight_kg ? `${item.quantity || 0} × ${item.unit_weight_kg} kg` : '—'}
+                </span>
+                <span className="font-semibold text-foreground">
+                  {item.total_weight_kg !== null && item.total_weight_kg !== undefined
+                    ? `${Number(item.total_weight_kg).toFixed(3).replace(/\.?0+$/, '')} kg`
+                    : (item.unit_weight_kg && item.quantity
+                        ? `${(Number(item.unit_weight_kg) * Number(item.quantity)).toFixed(3).replace(/\.?0+$/, '')} kg`
+                        : '—')}
+                </span>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
 

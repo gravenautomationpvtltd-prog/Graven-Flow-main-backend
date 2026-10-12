@@ -81,13 +81,32 @@ export function RepeatEnquiryDialog({
         assigned_to: assignedSalesId ?? null,
       });
 
+      // Consolidate duplicate products by query text
+      const dedupMap = new Map<string, { product_query_text: string; quantity: number; notes?: string }>();
+      for (const it of valid) {
+        const key = it.product_query_text.trim().toLowerCase();
+        const existing = dedupMap.get(key);
+        if (existing) {
+          existing.quantity += parseFloat(it.quantity) || 1;
+          if (it.notes && !existing.notes?.includes(it.notes)) {
+            existing.notes = existing.notes ? `${existing.notes}\n${it.notes}` : it.notes;
+          }
+        } else {
+          dedupMap.set(key, {
+            product_query_text: it.product_query_text.trim(),
+            quantity: parseFloat(it.quantity) || 1,
+            notes: it.notes || undefined,
+          });
+        }
+      }
+
       // Insert enquiry items (triggers will auto-check pricing + create price requests)
-      const itemsToInsert = valid.map((it, idx) => ({
+      const itemsToInsert = Array.from(dedupMap.values()).map((it, idx) => ({
         lead_id: (lead as any).id,
-        product_query_text: it.product_query_text.trim(),
-        quantity: parseFloat(it.quantity) || 1,
+        product_query_text: it.product_query_text,
+        quantity: it.quantity,
         notes: it.notes || null,
-        sort_order: idx,
+        sort_order: idx + 1,
       }));
       const { error: iErr } = await supabase.from('enquiry_items').insert(itemsToInsert);
       if (iErr) throw iErr;

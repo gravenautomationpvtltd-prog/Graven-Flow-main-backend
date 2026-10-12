@@ -1,6 +1,8 @@
 import { useState } from 'react';
-import { Phone, MessageCircle, Mail, ShoppingCart } from 'lucide-react';
+import { Phone, Mail, ShoppingCart, Sparkles } from 'lucide-react';
+import { WhatsAppIcon } from '@/components/icons/WhatsAppIcon';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { useCreateActivity } from '@/hooks/useActivities';
 import { useSalesOrderByLead } from '@/hooks/useSalesOrders';
@@ -8,6 +10,8 @@ import { SendWhatsAppDialog } from './SendWhatsAppDialog';
 import { CreateQuotationDialog } from '@/components/quotations/CreateQuotationDialog';
 import { RecordOrderDialog } from './RecordOrderDialog';
 import { CallQRCodeDialog } from './CallQRCodeDialog';
+import { LqtWorkflowModal } from '@/components/lqt/LqtWorkflowModal';
+import { QualifyLeadDialog } from './QualifyLeadDialog';
 import { useTranslation } from '@/lib/i18n';
 
 interface LeadActionsProps {
@@ -16,6 +20,7 @@ interface LeadActionsProps {
   customerPhone?: string | null;
   customerEmail?: string | null;
   customerName?: string;
+  lead?: any;
   onAddNote: () => void;
   onCreateTask: () => void;
 }
@@ -65,7 +70,7 @@ function ActionIcon({ icon, label, onClick, disabled, disabledReason, color }: A
   return button;
 }
 
-export function LeadActions({ leadId, customerId, customerPhone, customerEmail, customerName, onAddNote, onCreateTask }: LeadActionsProps) {
+export function LeadActions({ leadId, customerId, customerPhone, customerEmail, customerName, lead, onAddNote, onCreateTask }: LeadActionsProps) {
   const { t } = useTranslation();
   const createActivity = useCreateActivity();
   const { data: existingOrder } = useSalesOrderByLead(leadId);
@@ -73,6 +78,8 @@ export function LeadActions({ leadId, customerId, customerPhone, customerEmail, 
   const [createQuotationOpen, setCreateQuotationOpen] = useState(false);
   const [recordOrderOpen, setRecordOrderOpen] = useState(false);
   const [callQROpen, setCallQROpen] = useState(false);
+  const [workflowOpen, setWorkflowOpen] = useState(false);
+  const [qualifyOpen, setQualifyOpen] = useState(false);
 
   const handleCall = () => {
     if (customerPhone) {
@@ -119,7 +126,17 @@ export function LeadActions({ leadId, customerId, customerPhone, customerEmail, 
       <CardHeader className="pb-3 bg-muted/30">
         <CardTitle className="text-sm font-semibold">{t('leads.quick_actions', 'Quick Actions')}</CardTitle>
       </CardHeader>
-      <CardContent className="pt-4">
+      <CardContent className="pt-4 space-y-3">
+        {/* Core LQT Workflow: Customer Form, Payment & TST */}
+        <Button
+          size="sm"
+          className="w-full gap-2 bg-gradient-to-r from-indigo-600 to-primary hover:from-indigo-700 hover:to-primary/90 text-white font-medium text-xs h-9 shadow-sm"
+          onClick={() => setWorkflowOpen(true)}
+        >
+          <Sparkles className="h-3.5 w-3.5" />
+          LQT Workflow: Form & Payment
+        </Button>
+
         <div className="grid grid-cols-2 gap-3">
           <ActionIcon
             icon={<Phone className="h-5 w-5 text-blue-600" />}
@@ -130,7 +147,7 @@ export function LeadActions({ leadId, customerId, customerPhone, customerEmail, 
             color="bg-blue-500/10"
           />
           <ActionIcon
-            icon={<MessageCircle className="h-5 w-5 text-green-600" />}
+            icon={<WhatsAppIcon className="h-5 w-5 text-green-600" />}
             label={t('leads.whatsapp', 'WhatsApp')}
             onClick={handleWhatsApp}
             disabled={!customerPhone}
@@ -189,6 +206,23 @@ export function LeadActions({ leadId, customerId, customerPhone, customerEmail, 
         customerName={customerName}
         onLogActivity={logCallActivity}
       />
+
+      {workflowOpen && (
+        <LqtWorkflowModal
+          open={workflowOpen}
+          onOpenChange={setWorkflowOpen}
+          lead={lead || { id: leadId, customer_id: customerId, customer: { phone: customerPhone, email: customerEmail, contact_person: customerName } }}
+          onOpenQualifyDialog={() => setQualifyOpen(true)}
+        />
+      )}
+
+      {qualifyOpen && (
+        <QualifyLeadDialog
+          open={qualifyOpen}
+          onOpenChange={setQualifyOpen}
+          leadId={leadId}
+        />
+      )}
     </Card>
   );
 }

@@ -46,6 +46,7 @@ export interface EnquiryItemInsert {
   notes?: string;
   sort_order?: number;
   brand?: string | null;
+  allow_separate_line?: boolean;
 }
 
 export function useEnquiryItems(leadId: string | undefined) {
@@ -78,32 +79,66 @@ export function useCreateEnquiryItem() {
 
   return useMutation({
     mutationFn: async (item: EnquiryItemInsert) => {
-      const { data, error } = await supabase
-        .from('enquiry_items')
-        .insert(item)
-        .select()
-        .single();
+      // Use idempotent add_or_update_enquiry_item RPC to merge duplicate products safely
+      const { data, error } = await (supabase as any).rpc('add_or_update_enquiry_item', {
+        p_lead_id: item.lead_id,
+        p_product_query_text: item.product_query_text,
+        p_quantity: item.quantity ?? 1,
+        p_matched_product_id: item.matched_product_id ?? null,
+        p_brand: item.brand ?? null,
+        p_notes: item.notes ?? null,
+        p_target_rate: null,
+        p_price_available: item.price_available ?? false,
+        p_allow_separate_line: item.allow_separate_line ?? false,
+      });
 
-      if (error) throw error;
+      if (error) {
+        console.warn('add_or_update_enquiry_item fallback:', error);
+        // Fallback to standard insert if RPC has any connectivity/schema issue
+        const { data: fbData, error: fbError } = await supabase
+          .from('enquiry_items')
+          .insert({
+            lead_id: item.lead_id,
+            product_query_text: item.product_query_text,
+            quantity: item.quantity ?? 1,
+            matched_product_id: item.matched_product_id ?? null,
+            price_available: item.price_available ?? false,
+            notes: item.notes ?? null,
+            sort_order: item.sort_order,
+            brand: item.brand ?? null,
+          })
+          .select()
+          .single();
 
-      // Determine enquiry_status based on price availability
-      const newEnquiryStatus = item.price_available ? 'ready_to_quote' : 'pending_prices';
+        if (fbError) throw fbError;
 
-      // Auto-update lead's has_enquiry and enquiry_status
-      await supabase
-        .from('leads')
-        .update({ 
-          has_enquiry: true,
-          enquiry_status: newEnquiryStatus
-        })
-        .eq('id', item.lead_id);
+        const newEnquiryStatus = item.price_available ? 'ready_to_quote' : 'pending_prices';
+        await supabase
+          .from('leads')
+          .update({ 
+            has_enquiry: true,
+            enquiry_status: newEnquiryStatus
+          })
+          .eq('id', item.lead_id);
+
+        return fbData;
+      }
 
       return data;
     },
-    onSuccess: (data) => {
-      queryClient.invalidateQueries({ queryKey: ['enquiry-items', data.lead_id] });
-      queryClient.invalidateQueries({ queryKey: ['lead', data.lead_id] });
-      queryClient.invalidateQueries({ queryKey: ['leads'] });
+    onSuccess: (data: any) => {
+      const leadId = data?.lead_id;
+      if (leadId) {
+        queryClient.invalidateQueries({ queryKey: ['enquiry-items', leadId] });
+        queryClient.invalidateQueries({ queryKey: ['lead', leadId] });
+        queryClient.invalidateQueries({ queryKey: ['leads'] });
+      }
+
+      if (data?.action === 'updated') {
+        toast.info(`Updated quantity for ${data.product_query_text} (now ${data.quantity})`);
+      } else {
+        toast.success(`Added ${data?.product_query_text || 'item'}`);
+      }
     },
     onError: (error: Error) => {
       toast.error('Failed to add enquiry item: ' + error.message);

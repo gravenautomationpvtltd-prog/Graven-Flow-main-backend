@@ -1,11 +1,10 @@
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useNavigate } from 'react-router-dom';
-import { ArrowRight, FileText } from 'lucide-react';
+import { FileText } from 'lucide-react';
+import { CopyableText } from '@/components/shared/CopyableText';
 import { LeadStatusBadge } from '@/components/leads/LeadStatusBadge';
 import type { Database } from '@/integrations/supabase/types';
 
@@ -67,11 +66,15 @@ export function CustomerLeadsSection({ customerId }: CustomerLeadsSectionProps) 
             {leads.map((lead) => (
               <div
                 key={lead.id}
-                className="flex items-center justify-between p-3 rounded-lg border hover:bg-muted/50 cursor-pointer transition-colors"
-                onClick={() => navigate(`/leads/${lead.id}`)}
+                className="flex items-center justify-between p-3 rounded-lg border hover:bg-muted/40 transition-colors"
               >
                 <div className="space-y-1">
-                  <div className="font-medium">{lead.title}</div>
+                  <CopyableText
+                    text={lead.title}
+                    label="lead title"
+                    textClassName="font-medium"
+                    onClickText={() => navigate(`/leads/${lead.id}`)}
+                  />
                   <div className="text-sm text-muted-foreground">
                     {new Date(lead.created_at).toLocaleDateString()}
                     {lead.estimated_value && (
@@ -81,7 +84,6 @@ export function CustomerLeadsSection({ customerId }: CustomerLeadsSectionProps) 
                 </div>
                 <div className="flex items-center gap-2">
                   <LeadStatusBadge status={lead.status} />
-                  <ArrowRight className="h-4 w-4 text-muted-foreground" />
                 </div>
               </div>
             ))}

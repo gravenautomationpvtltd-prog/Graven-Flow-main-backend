@@ -477,7 +477,14 @@ export function AppSidebar() {
             <div className="flex-1 min-w-0">
               <p className="text-sm font-medium truncate">{profile?.full_name || 'User'}</p>
               <p className="text-xs text-muted-foreground truncate capitalize">
-                {roles[0]?.replace('_', ' ') || 'No role'}
+                {(roles.includes('super_admin')
+                  ? 'super_admin'
+                  : roles.includes('coo')
+                  ? 'coo'
+                  : roles.includes('manager')
+                  ? 'manager'
+                  : roles[0]
+                )?.replace('_', ' ') || 'No role'}
               </p>
             </div>
           )}

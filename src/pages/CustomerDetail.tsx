@@ -15,6 +15,7 @@ import { CustomerLedgerSection } from '@/components/customers/CustomerLedgerSect
 import { CustomerPOLedgerSection } from '@/components/customers/CustomerPOLedgerSection';
 import { CustomerOutreachSection } from '@/components/customers/CustomerOutreachSection';
 import { CustomerAssignmentHistory } from '@/components/customers/CustomerAssignmentHistory';
+import { CustomerTSTSection } from '@/components/customers/CustomerTSTSection';
 import { useState } from 'react';
 import { getSegmentConfig, SEGMENT_OPTIONS } from '@/lib/segment-config';
 import { useUpdateCustomerSegment } from '@/hooks/useCROAssignments';
@@ -233,6 +234,9 @@ export default function CustomerDetail() {
 
       {/* Leads Section */}
       <CustomerLeadsSection customerId={customer.id} />
+
+      {/* TST 360 Section (Technical Consultation, Solutions, & Feedback) */}
+      <CustomerTSTSection customerId={customer.id} />
 
       {/* Outreach History Section */}
       <CustomerOutreachSection customerId={customer.id} />

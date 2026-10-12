@@ -23,12 +23,12 @@ export function useLqtRealtime() {
         console.debug('[LQT realtime]', payload.table, payload.eventType);
       }
       if (timerRef.current) clearTimeout(timerRef.current);
-      // Collapse bulk-import bursts into one refresh. invalidateQueries already
-      // refetches active observers, so a second explicit refetch is unnecessary.
+      // Instant 200ms collapse for rapid updates without 2-second user lag
       timerRef.current = setTimeout(() => {
+        console.debug('[TIMING] ⚡ LQT Realtime update triggered query invalidation');
         qc.invalidateQueries({ queryKey: ['lqt-leads'] });
         qc.invalidateQueries({ queryKey: ['lqt-stats'] });
-      }, 2_000);
+      }, 200);
     };
 
     const channel = supabase

@@ -79,8 +79,8 @@ export default function PaymentPage() {
     setCouponValidating(true);
     setCouponResult(null);
     try {
-      const projectId = import.meta.env.VITE_SUPABASE_PROJECT_ID;
-      const res = await fetch(`https://${projectId}.supabase.co/functions/v1/validate-coupon`, {
+      const baseUrl = import.meta.env.VITE_SUPABASE_URL;
+      const res = await fetch(`${baseUrl}/functions/v1/validate-coupon`, {
         method: "POST",
         headers: { "Content-Type": "application/json", "apikey": import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY },
         body: JSON.stringify({ coupon_code: couponCode, plan_type: planType, user_count: userCount }),
@@ -111,8 +111,8 @@ export default function PaymentPage() {
 
     // For new links, create order dynamically
     try {
-      const projectId = import.meta.env.VITE_SUPABASE_PROJECT_ID;
-      const res = await fetch(`https://${projectId}.supabase.co/functions/v1/razorpay-checkout`, {
+      const baseUrl = import.meta.env.VITE_SUPABASE_URL;
+      const res = await fetch(`${baseUrl}/functions/v1/razorpay-checkout`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",

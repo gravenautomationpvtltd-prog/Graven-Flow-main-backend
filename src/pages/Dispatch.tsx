@@ -1,4 +1,5 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { useTranslation } from '@/lib/i18n';
 import { Plus, Search, Truck, Package, CheckCircle, Clock } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -18,15 +19,25 @@ import { DateRangeFilter, type DatePreset, getDateRangeFromPreset } from '@/comp
 
 export default function Dispatch() {
   const { t } = useTranslation();
-  const [search, setSearch] = useState('');
+  const [searchParams] = useSearchParams();
+  const initialSearch = searchParams.get('search') || '';
+  const [search, setSearch] = useState(initialSearch);
   const [statusFilter, setStatusFilter] = useState('all');
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
   
-  // Date range state
-  const [datePreset, setDatePreset] = useState<DatePreset>('this_month');
+  // Date range state: if user is searching for a specific dispatch, default datePreset to 'all'
+  const [datePreset, setDatePreset] = useState<DatePreset>(initialSearch ? 'all' : 'this_month');
   const [customFrom, setCustomFrom] = useState<Date | undefined>();
   const [customTo, setCustomTo] = useState<Date | undefined>();
   const dateRange = getDateRangeFromPreset(datePreset, customFrom, customTo);
+
+  useEffect(() => {
+    const s = searchParams.get('search');
+    if (s) {
+      setSearch(s);
+      setDatePreset('all');
+    }
+  }, [searchParams]);
 
   const { data: dispatches = [] } = useDispatches();
 

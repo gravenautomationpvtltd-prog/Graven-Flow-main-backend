@@ -7,6 +7,7 @@ import { Table, TableHeader, TableHead, TableBody, TableRow, TableCell } from '@
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Search, ExternalLink } from 'lucide-react';
+import { CopyableText, CopyablePhone, CopyableEmail } from '@/components/shared/CopyableText';
 import { format } from 'date-fns';
 
 interface Props {
@@ -21,7 +22,7 @@ export function CustomersDrilldownDialog({ open, onOpenChange, dateRange, assign
   const [search, setSearch] = useState('');
 
   const { data: customers = [], isLoading } = useQuery({
-    queryKey: ['drilldown-customers', dateRange.from, dateRange.to, search, assignedTo ?? null],
+    queryKey: ['drilldown-customers', dateRange.from?.toISOString(), dateRange.to?.toISOString(), search, assignedTo ?? null],
     queryFn: async () => {
       let query = supabase
         .from('customers')
@@ -71,12 +72,27 @@ export function CustomersDrilldownDialog({ open, onOpenChange, dateRange, assign
             ) : customers.length === 0 ? (
               <TableRow><TableCell colSpan={6} className="text-center py-8 text-muted-foreground">No customers found</TableCell></TableRow>
             ) : customers.map((c: any) => (
-              <TableRow key={c.id} className="cursor-pointer hover:bg-muted/50" onClick={() => { onOpenChange(false); navigate(`/customers/${c.id}`); }}>
-                <TableCell className="font-medium">{c.company_name}</TableCell>
-                <TableCell>{c.contact_person || '—'}</TableCell>
-                <TableCell>{c.email || '—'}</TableCell>
-                <TableCell>{c.phone || '—'}</TableCell>
-                <TableCell>{c.assigned_sales?.full_name || '—'}</TableCell>
+              <TableRow key={c.id} className="hover:bg-muted/40 transition-colors">
+                <TableCell className="font-medium">
+                  <CopyableText
+                    text={c.company_name}
+                    label="company name"
+                    onClickText={() => { onOpenChange(false); navigate(`/customers/${c.id}`); }}
+                    textClassName="font-medium text-foreground"
+                  />
+                </TableCell>
+                <TableCell>
+                  <CopyableText text={c.contact_person} label="contact person" />
+                </TableCell>
+                <TableCell>
+                  <CopyableEmail email={c.email} />
+                </TableCell>
+                <TableCell>
+                  <CopyablePhone phone={c.phone} />
+                </TableCell>
+                <TableCell>
+                  <CopyableText text={c.assigned_sales?.full_name} label="assigned sales" />
+                </TableCell>
                 <TableCell>{format(new Date(c.created_at), 'dd MMM yyyy')}</TableCell>
               </TableRow>
             ))}

@@ -85,24 +85,55 @@ export function useQualifyLead() {
       // 1) Insert enquiry_items first (so the SPT-routing trigger sees them)
       let insertedEnquiryItems: Array<{ id: string; sort_order: number }> = [];
       if (items && items.length > 0 && (input.routed_to === 'spt' || input.routed_to === 'tst')) {
-        // Clear any prior items LQT may have entered for this lead in a previous attempt
-        await supabase.from('enquiry_items').delete().eq('lead_id', input.lead_id);
+        // Pre-deduplicate items in memory (consolidate quantities and attachments for identical products)
+        const dedupMap = new Map<string, QualifyItemInput>();
+        for (const it of items) {
+          const key = it.product_id
+            ? `prod_${it.product_id}`
+            : `text_${it.product_query_text.trim().toLowerCase()}`;
+          const existing = dedupMap.get(key);
+          if (existing) {
+            existing.quantity = (Number(existing.quantity) || 1) + (Number(it.quantity) || 1);
+            if (it.notes && !existing.notes?.includes(it.notes)) {
+              existing.notes = existing.notes ? `${existing.notes}\n${it.notes}` : it.notes;
+            }
+            if (it.attachments && it.attachments.length > 0) {
+              existing.attachments = [...(existing.attachments || []), ...it.attachments];
+            }
+          } else {
+            dedupMap.set(key, { ...it, quantity: Number(it.quantity) || 1 });
+          }
+        }
+        const deduplicatedItems = Array.from(dedupMap.values());
 
-        const enquiryRows = items.map((it, idx) => ({
-          lead_id: input.lead_id,
-          product_query_text: it.product_query_text,
-          quantity: it.quantity,
-          matched_product_id: it.product_id,
-          notes: it.notes || null,
-          sort_order: idx + 1,
-          brand: it.brand?.trim() || null,
-        }));
-        const { data: insertedRows, error: eiErr } = await supabase
-          .from('enquiry_items')
-          .insert(enquiryRows)
-          .select('id, sort_order');
-        if (eiErr) throw eiErr;
-        insertedEnquiryItems = (insertedRows || []) as Array<{ id: string; sort_order: number }>;
+        // Atomically replace & ingest deduplicated enquiry items via qualify_lead_enquiry_items RPC
+        const { data: rpcRows, error: rpcErr } = await (supabase as any).rpc('qualify_lead_enquiry_items', {
+          p_lead_id: input.lead_id,
+          p_items: deduplicatedItems,
+        });
+
+        if (rpcErr) {
+          console.warn('qualify_lead_enquiry_items fallback:', rpcErr);
+          // Fallback to standard flow
+          await supabase.from('enquiry_items').delete().eq('lead_id', input.lead_id);
+          const enquiryRows = deduplicatedItems.map((it, idx) => ({
+            lead_id: input.lead_id,
+            product_query_text: it.product_query_text,
+            quantity: it.quantity,
+            matched_product_id: it.product_id,
+            notes: it.notes || null,
+            sort_order: idx + 1,
+            brand: it.brand?.trim() || null,
+          }));
+          const { data: insertedRows, error: eiErr } = await supabase
+            .from('enquiry_items')
+            .insert(enquiryRows)
+            .select('id, sort_order');
+          if (eiErr) throw eiErr;
+          insertedEnquiryItems = (insertedRows || []) as Array<{ id: string; sort_order: number }>;
+        } else {
+          insertedEnquiryItems = (rpcRows || []) as Array<{ id: string; sort_order: number }>;
+        }
 
         // Upload attachments per item (best-effort; failures don't block qualification)
         for (let i = 0; i < items.length; i++) {

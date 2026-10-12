@@ -5,6 +5,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '
 import { Table, TableHeader, TableHead, TableBody, TableRow, TableCell } from '@/components/ui/table';
 import { Button } from '@/components/ui/button';
 import { ExternalLink } from 'lucide-react';
+import { CopyableText } from '@/components/shared/CopyableText';
 import { format } from 'date-fns';
 
 interface Props {
@@ -18,18 +19,18 @@ export function DealsWonDrilldownDialog({ open, onOpenChange, dateRange, assigne
   const navigate = useNavigate();
 
   const { data: deals = [], isLoading } = useQuery({
-    queryKey: ['drilldown-deals-won', dateRange.from, dateRange.to, assignedTo ?? null],
+    queryKey: ['drilldown-deals-won', dateRange.from?.toISOString(), dateRange.to?.toISOString(), assignedTo ?? null],
     queryFn: async () => {
       let query = supabase
         .from('leads')
         .select('*, customer:customers(company_name)')
         .eq('status', 'won')
         .is('deleted_at', null)
-        .order('won_at', { ascending: false })
-        .limit(20);
+        .order('created_at', { ascending: false })
+        .limit(50);
 
-      if (dateRange.from) query = query.gte('won_at', dateRange.from.toISOString());
-      if (dateRange.to) query = query.lte('won_at', dateRange.to.toISOString());
+      if (dateRange.from) query = query.or(`won_at.gte.${dateRange.from.toISOString()},and(won_at.is.null,created_at.gte.${dateRange.from.toISOString()})`);
+      if (dateRange.to) query = query.or(`won_at.lte.${dateRange.to.toISOString()},and(won_at.is.null,created_at.lte.${dateRange.to.toISOString()})`);
       if (assignedTo) query = query.eq('assigned_to', assignedTo);
 
       const { data, error } = await query;
@@ -74,9 +75,25 @@ export function DealsWonDrilldownDialog({ open, onOpenChange, dateRange, assigne
             ) : deals.length === 0 ? (
               <TableRow><TableCell colSpan={4} className="text-center py-8 text-muted-foreground">No won deals found</TableCell></TableRow>
             ) : deals.map((deal: any) => (
-              <TableRow key={deal.id} className="cursor-pointer hover:bg-muted/50" onClick={() => { onOpenChange(false); navigate(`/leads/${deal.id}`); }}>
-                <TableCell className="font-medium">{deal.title || 'Untitled'}</TableCell>
-                <TableCell>{deal.customer?.company_name || '—'}</TableCell>
+              <TableRow key={deal.id} className="hover:bg-muted/40 transition-colors">
+                <TableCell className="font-medium">
+                  <CopyableText
+                    text={deal.title || 'Untitled'}
+                    label="lead title"
+                    onClickText={!deal.customer?.company_name ? () => { onOpenChange(false); navigate(`/leads/${deal.id}`); } : undefined}
+                    textClassName="font-medium"
+                  />
+                </TableCell>
+                <TableCell>
+                  {deal.customer?.company_name ? (
+                    <CopyableText
+                      text={deal.customer.company_name}
+                      label="company name"
+                      onClickText={() => { onOpenChange(false); navigate(`/leads/${deal.id}`); }}
+                      textClassName="font-medium text-foreground"
+                    />
+                  ) : '—'}
+                </TableCell>
                 <TableCell className="text-right font-medium">₹{Math.round(deal.estimated_value || 0).toLocaleString('en-IN')}</TableCell>
                 <TableCell>{deal.won_at ? format(new Date(deal.won_at), 'dd MMM yyyy') : '—'}</TableCell>
               </TableRow>

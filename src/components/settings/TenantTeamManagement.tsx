@@ -33,7 +33,7 @@ export function TenantTeamManagement() {
                 Team Members
               </CardTitle>
               <CardDescription>
-                {activeCount} / {tenant.max_users} seats used
+                {activeCount} active team members
               </CardDescription>
             </div>
             <Button onClick={handleInvite} size="sm">

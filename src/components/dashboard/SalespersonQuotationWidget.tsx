@@ -5,6 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { Skeleton } from '@/components/ui/skeleton';
 import { FileText, TrendingUp, Clock, RefreshCw, DollarSign, Target } from 'lucide-react';
 import { formatCurrencyWithSymbol } from '@/lib/currency-utils';
+import { fetchUserAssociatedLeadIds } from '@/lib/lead-persistence';
 
 const formatCurrency = (amount: number) => formatCurrencyWithSymbol(amount, 'INR');
 
@@ -22,20 +23,32 @@ function useUserQuotationPerformance(userId: string, dateRange?: { from?: Date; 
       let query = supabase
         .from('quotations')
         .select('id, created_at, grand_total, status, is_converted, revision_number, lead_id')
-        .eq('created_by', userId)
         .is('deleted_at', null)
         .neq('status', 'draft');
+
+      const associatedLeadIds = (await fetchUserAssociatedLeadIds(userId)).slice(0, 50);
+      if (associatedLeadIds.length > 0 && associatedLeadIds.length <= 50) {
+        query = query.or(`created_by.eq.${userId},lead_id.in.(${associatedLeadIds.join(',')})`);
+      } else {
+        query = query.eq('created_by', userId);
+      }
 
       if (dateRange?.from) query = query.gte('created_at', dateRange.from.toISOString());
       if (dateRange?.to) query = query.lte('created_at', dateRange.to.toISOString());
 
-      const [quotationsRes, leadsRes] = await Promise.all([
-        query,
-        supabase.from('leads').select('id, status, won_at, lost_reason').is('deleted_at', null),
-      ]);
-
+      const quotationsRes = await query;
       const quotations = quotationsRes.data || [];
-      const leadMap = new Map((leadsRes.data || []).map(l => [l.id, l]));
+      const quotationLeadIds = Array.from(new Set(quotations.map(q => q.lead_id).filter(Boolean)));
+
+      let leadMap = new Map();
+      if (quotationLeadIds.length > 0) {
+        const { data: leads } = await supabase
+          .from('leads')
+          .select('id, status, won_at, lost_reason')
+          .is('deleted_at', null)
+          .in('id', quotationLeadIds.slice(0, 100));
+        leadMap = new Map((leads || []).map(l => [l.id, l]));
+      }
 
       const total = quotations.length;
       const totalValue = quotations.reduce((s, q) => s + (q.grand_total || 0), 0);
@@ -65,6 +78,8 @@ function useUserQuotationPerformance(userId: string, dateRange?: { from?: Date; 
       return { total, totalValue, converted: converted.length, conversionRate, avgDays, revisionRate, topLossReason };
     },
     enabled: !!userId && !!session,
+    staleTime: 30_000,
+    refetchOnMount: true,
   });
 }
 

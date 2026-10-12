@@ -21,6 +21,7 @@ import { useGRNs, useVerifyGRN, useDeleteGRN } from '@/hooks/useGRN';
 import { ViewGRNDialog } from './ViewGRNDialog';
 import { useAuth } from '@/hooks/useAuth';
 import { DoubleConfirmDeleteDialog } from '@/components/ui/double-confirm-delete-dialog';
+import { CopyableText } from '@/components/shared/CopyableText';
 
 interface GRNListTableProps {
   searchQuery?: string;
@@ -110,15 +111,23 @@ export function GRNListTable({ searchQuery = '', statusFilter = 'all' }: GRNList
           </TableHeader>
           <TableBody>
             {filteredGRNs.map((grn) => (
-              <TableRow key={grn.id} className="cursor-pointer" onClick={() => handleView(grn.id)}>
+              <TableRow key={grn.id}>
                 <TableCell>
                   <div className="flex items-center gap-2">
-                    <Package className="h-4 w-4 text-muted-foreground" />
-                    <span className="font-medium">{grn.grn_number}</span>
+                    <Package className="h-4 w-4 text-muted-foreground shrink-0" />
+                    <CopyableText text={grn.grn_number} className="font-medium" />
                   </div>
                 </TableCell>
-                <TableCell>{grn.purchase_order?.po_number || '-'}</TableCell>
-                <TableCell>{grn.supplier?.name || '-'}</TableCell>
+                <TableCell>
+                  {grn.purchase_order?.po_number ? (
+                    <CopyableText text={grn.purchase_order.po_number} />
+                  ) : '-'}
+                </TableCell>
+                <TableCell>
+                  {grn.supplier?.name ? (
+                    <CopyableText text={grn.supplier.name} />
+                  ) : '-'}
+                </TableCell>
                 <TableCell>
                   {grn.received_date ? format(new Date(grn.received_date), 'dd MMM yyyy') : '-'}
                 </TableCell>
@@ -129,43 +138,52 @@ export function GRNListTable({ searchQuery = '', statusFilter = 'all' }: GRNList
                 </TableCell>
                 <TableCell>{grn.receiver?.full_name || '-'}</TableCell>
                 <TableCell className="text-right">
-                  <DropdownMenu>
-                    <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
-                      <Button variant="ghost" size="icon">
-                        <MoreHorizontal className="h-4 w-4" />
-                      </Button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end">
-                      <DropdownMenuItem onClick={(e) => { e.stopPropagation(); handleView(grn.id); }}>
-                        <Eye className="mr-2 h-4 w-4" />
-                        View Details
-                      </DropdownMenuItem>
-                      {grn.status === 'pending' && (isAdmin || isManager) && (
-                        <DropdownMenuItem onClick={(e) => { e.stopPropagation(); handleVerify(grn.id); }}>
-                          <CheckCircle className="mr-2 h-4 w-4" />
-                          Verify & Update Inventory
+                  <div className="flex items-center justify-end gap-1">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-8 px-2 text-xs"
+                      onClick={() => handleView(grn.id)}
+                    >
+                      <Eye className="h-3.5 w-3.5 mr-1" /> View
+                    </Button>
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button variant="ghost" size="icon" className="h-8 w-8">
+                          <MoreHorizontal className="h-4 w-4" />
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end">
+                        <DropdownMenuItem onClick={() => handleView(grn.id)}>
+                          <Eye className="mr-2 h-4 w-4" />
+                          View Details
                         </DropdownMenuItem>
-                      )}
-                      {isAdmin && grn.status === 'pending' && (
-                        <DropdownMenuItem
-                          className="text-destructive"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setGrnToDelete({
-                              id: grn.id,
-                              grn_number: grn.grn_number,
-                              po_number: grn.purchase_order?.po_number,
-                              supplier_name: grn.supplier?.name,
-                            });
-                            setDeleteDialogOpen(true);
-                          }}
-                        >
-                          <Trash2 className="mr-2 h-4 w-4" />
-                          Delete
-                        </DropdownMenuItem>
-                      )}
-                    </DropdownMenuContent>
-                  </DropdownMenu>
+                        {grn.status === 'pending' && (isAdmin || isManager) && (
+                          <DropdownMenuItem onClick={() => handleVerify(grn.id)}>
+                            <CheckCircle className="mr-2 h-4 w-4" />
+                            Verify & Update Inventory
+                          </DropdownMenuItem>
+                        )}
+                        {isAdmin && grn.status === 'pending' && (
+                          <DropdownMenuItem
+                            className="text-destructive"
+                            onClick={() => {
+                              setGrnToDelete({
+                                id: grn.id,
+                                grn_number: grn.grn_number,
+                                po_number: grn.purchase_order?.po_number,
+                                supplier_name: grn.supplier?.name,
+                              });
+                              setDeleteDialogOpen(true);
+                            }}
+                          >
+                            <Trash2 className="mr-2 h-4 w-4" />
+                            Delete
+                          </DropdownMenuItem>
+                        )}
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  </div>
                 </TableCell>
               </TableRow>
             ))}

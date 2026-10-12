@@ -38,14 +38,18 @@ export default function LeadDetail() {
   const fromUrl = searchParams.get('from');
   
   const handleBackToLeads = useCallback(() => {
-    if (fromUrl && fromUrl.startsWith('/leads')) {
-      // Navigate to the exact URL we came from (with filters preserved)
+    if (fromUrl && (fromUrl.startsWith('/leads') || fromUrl.startsWith('/lqt-inbox') || fromUrl.startsWith('/cro-dashboard'))) {
       navigate(fromUrl);
     } else {
-      // Fallback: try browser back, then /leads
       navigate('/leads');
     }
   }, [fromUrl, navigate]);
+
+  const backLabel = fromUrl?.startsWith('/cro-dashboard')
+    ? 'Back to CRO Dashboard'
+    : fromUrl?.startsWith('/lqt-inbox')
+    ? 'Back to LQT Inbox'
+    : 'Back to Leads';
   const { data: lead, isLoading, error } = useLead(id);
   const { data: leadTasks, isLoading: tasksLoading } = useTasks({ leadId: id });
   const { data: quotations } = useQuotations(id);
@@ -128,7 +132,7 @@ export default function LeadDetail() {
     <div className="space-y-6">
       <Button variant="ghost" onClick={handleBackToLeads} className="mb-4">
         <ArrowLeft className="h-4 w-4 mr-2" />
-        Back to Leads
+        {backLabel}
       </Button>
       
       <LeadHeader lead={lead} />
@@ -299,6 +303,7 @@ export default function LeadDetail() {
             customerPhone={lead.customer?.phone}
             customerEmail={lead.customer?.email}
             customerName={lead.customer?.contact_person || lead.customer?.company_name}
+            lead={lead}
             onAddNote={() => setAddActivityOpen(true)}
             onCreateTask={() => setCreateTaskOpen(true)}
           />

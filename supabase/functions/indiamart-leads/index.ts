@@ -537,46 +537,10 @@ serve(async (req) => {
               continue;
             }
 
-            // DEDUPE: Merge repeat enquiries from the same buyer on the same product
-            // (different IndiaMART enquiry ids — e.g. "interest" + "product view")
-            // into a single OPEN lead created within the last 24 hours.
-            const productKey = extractProductKey(lead.QUERY_PRODUCT_NAME);
-            const repeatOf = await findOpenRecentLead(supabase, {
-              source: 'indiamart',
-              tenantId: account.tenant_id || null,
-              customerId,
-              productKey,
-            });
+            // ZERO LEAD LOSS: Every unique IndiaMART enquiry (UNIQUE_QUERY_ID) must be
+            // inserted as its own lead row so the sales team sees every customer requirement.
+            // Duplicate query IDs are already protected by source_reference check above.
 
-            if (repeatOf) {
-              const queryType = lead.QUERY_TYPE || lead.QUERY_TYPE_NAME || null;
-              const description =
-                lead.QUERY_MESSAGE ||
-                lead.QUERY_MCAT_NAME ||
-                lead.SUBJECT ||
-                'Repeat enquiry from IndiaMART';
-              await supabase.from('activities').insert({
-                lead_id: repeatOf.id,
-                user_id: repeatOf.assigned_to,
-                activity_type: 'repeat_enquiry',
-                description,
-                metadata: {
-                  source: 'indiamart',
-                  source_reference: queryId,
-                  query_type: queryType,
-                  product_name: lead.QUERY_PRODUCT_NAME || null,
-                  received_at: new Date().toISOString(),
-                },
-              });
-              await supabase
-                .from('leads')
-                .update({ last_activity_at: new Date().toISOString() })
-                .eq('id', repeatOf.id);
-              console.log(
-                `[Dedupe] Merged IndiaMART enquiry ${queryId} into existing lead ${repeatOf.id}`
-              );
-              continue;
-            }
 
             // LQT-FIRST: Insert with assigned_to=null so the DB trigger
             // (auto_assign_lead_on_insert) routes via pick_next_lqt_user(tenant_id).

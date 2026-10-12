@@ -59,12 +59,14 @@ interface AttendanceFilters {
   startDate?: Date;
   endDate?: Date;
   status?: string;
+  limit?: number;
 }
 
 // Fetch attendance records with filters
 export function useAttendanceRecords(filters: AttendanceFilters = {}) {
   return useQuery({
     queryKey: ['attendance-records', filters],
+    staleTime: 30 * 1000,
     queryFn: async () => {
       let query = supabase
         .from('attendance_records')
@@ -89,6 +91,13 @@ export function useAttendanceRecords(filters: AttendanceFilters = {}) {
       }
       if (filters.status) {
         query = query.eq('status', filters.status);
+      }
+
+      // Respect explicit limit; only apply a safety ceiling when no boundary (user or date) is provided
+      if (filters.limit) {
+        query = query.limit(filters.limit);
+      } else if (!filters.startDate && !filters.endDate && !filters.userId) {
+        query = query.limit(1000);
       }
 
       const { data, error } = await query;

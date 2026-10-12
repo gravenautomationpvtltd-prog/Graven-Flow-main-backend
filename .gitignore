@@ -29,3 +29,11 @@ dist-ssr
 
 # Build artifacts
 dist.zip
+.env
+scratch/
+hostinger-live-upload/
+upload_files/
+postgres-windows-x86_64.txz
+supabase/.temp/
+tools/
+

@@ -112,6 +112,7 @@ export function EnquiryItemsSection({
   const [newItemBrand, setNewItemBrand] = useState('');
   const [inputMode, setInputMode] = useState<'catalog' | 'custom'>('catalog');
   const [pendingFiles, setPendingFiles] = useState<File[]>([]);
+  const [addAsSeparateLine, setAddAsSeparateLine] = useState(false);
   
   // Attachment dialogs
   const [attachmentDialogOpen, setAttachmentDialogOpen] = useState(false);
@@ -175,6 +176,7 @@ export function EnquiryItemsSection({
     setNewItemBrand('');
     setInputMode('catalog');
     setPendingFiles([]);
+    setAddAsSeparateLine(false);
   };
 
   const handleProductSelect = (product: SelectedProduct | null, customText?: string) => {
@@ -215,6 +217,7 @@ export function EnquiryItemsSection({
       matched_product_id: matchedProductId,
       price_available: hasPriceInCatalog || false,
       brand: newItemBrand.trim() || selectedProduct?.brand || null,
+      allow_separate_line: addAsSeparateLine,
     });
 
     // Upload any pending files
@@ -1092,6 +1095,18 @@ export function EnquiryItemsSection({
               maxFiles={5}
               disabled={createItem.isPending || uploadAttachment.isPending}
             />
+          </div>
+          <div className="flex items-center space-x-2 pt-1">
+            <input
+              type="checkbox"
+              id="separate-line"
+              checked={addAsSeparateLine}
+              onChange={(e) => setAddAsSeparateLine(e.target.checked)}
+              className="rounded border-gray-300 text-primary focus:ring-primary h-4 w-4"
+            />
+            <Label htmlFor="separate-line" className="text-xs text-muted-foreground font-normal cursor-pointer select-none">
+              Add as separate line item (don't merge quantity if already present)
+            </Label>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setAddDialogOpen(false)}>

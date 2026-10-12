@@ -16,7 +16,13 @@ export type EntityType =
   | 'grn'
   | 'user'
   | 'report'
-  | 'cro_assignment';
+  | 'cro_assignment'
+  | 'tst_case'
+  | 'tst_interaction'
+  | 'payment_request'
+  | 'customer_form'
+  | 'customer_feedback'
+  | 'qualification';
 
 interface LogActivityParams {
   action: ActivityAction;

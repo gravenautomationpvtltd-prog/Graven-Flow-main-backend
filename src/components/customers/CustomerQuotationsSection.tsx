@@ -23,6 +23,7 @@ import { useTenantBranding } from '@/hooks/useTenantBranding';
 import { CreateQuotationDialog } from '@/components/quotations/CreateQuotationDialog';
 import { ViewQuotationDialog } from '@/components/quotations/ViewQuotationDialog';
 import { EditQuotationDialog } from '@/components/quotations/EditQuotationDialog';
+import { formatISTDate, formatISTTime, formatISTDateTime } from '@/lib/date-utils';
 import { DuplicateQuotationDialog, type DuplicateSelection } from '@/components/quotations/DuplicateQuotationDialog';
 import { downloadQuotationPDF } from '@/lib/quotation-pdf';
 import { downloadProformaInvoicePDF } from '@/lib/pi-pdf';
@@ -220,8 +221,11 @@ export function CustomerQuotationsSection({ customerId }: CustomerQuotationsSect
                           onClick={() => openQuotation(q)}
                         >
                           <TableCell className="font-medium">{q.quotation_number}</TableCell>
-                          <TableCell className="text-muted-foreground">
-                            {new Date(q.created_at).toLocaleDateString()}
+                          <TableCell className="text-muted-foreground text-sm" title={formatISTDateTime(q.created_at)}>
+                            <div className="flex flex-col">
+                              <span className="font-medium text-foreground">{formatISTDate(q.created_at)}</span>
+                              <span className="text-[11px] text-muted-foreground">{formatISTTime(q.created_at)}</span>
+                            </div>
                           </TableCell>
                           <TableCell
                             className={hasLead ? 'text-primary hover:underline cursor-pointer' : 'text-muted-foreground'}

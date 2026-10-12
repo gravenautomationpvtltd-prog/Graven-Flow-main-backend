@@ -21,6 +21,7 @@ import { useDispatches, useDeleteDispatch, Dispatch } from '@/hooks/useDispatche
 import { ViewDispatchDialog } from './ViewDispatchDialog';
 import { useAuth } from '@/hooks/useAuth';
 import { DoubleConfirmDeleteDialog } from '@/components/ui/double-confirm-delete-dialog';
+import { CopyableText } from '@/components/shared/CopyableText';
 
 interface DispatchesTableProps {
   searchQuery?: string;
@@ -113,18 +114,22 @@ export function DispatchesTable({ searchQuery = '', statusFilter = 'all' }: Disp
           </TableHeader>
           <TableBody>
             {filteredDispatches.map((dispatch) => (
-              <TableRow key={dispatch.id} className="cursor-pointer" onClick={() => handleView(dispatch)}>
+              <TableRow key={dispatch.id}>
                 <TableCell>
                   <div className="flex items-center gap-2">
-                    <Truck className="h-4 w-4 text-muted-foreground" />
-                    <span className="font-medium">{dispatch.dispatch_number}</span>
+                    <Truck className="h-4 w-4 text-muted-foreground shrink-0" />
+                    <CopyableText text={dispatch.dispatch_number} className="font-medium" />
                   </div>
                 </TableCell>
                 <TableCell>
-                  {dispatch.customer?.company_name || '-'}
+                  {dispatch.customer?.company_name ? (
+                    <CopyableText text={dispatch.customer.company_name} />
+                  ) : '-'}
                 </TableCell>
                 <TableCell>
-                  {dispatch.quotation?.quotation_number || '-'}
+                  {dispatch.quotation?.quotation_number ? (
+                    <CopyableText text={dispatch.quotation.quotation_number} />
+                  ) : '-'}
                 </TableCell>
                 <TableCell>
                   {dispatch.dispatch_date ? format(new Date(dispatch.dispatch_date), 'dd MMM yyyy') : '-'}
@@ -133,7 +138,9 @@ export function DispatchesTable({ searchQuery = '', statusFilter = 'all' }: Disp
                   {dispatch.courier_name || '-'}
                 </TableCell>
                 <TableCell>
-                  {dispatch.tracking_number || '-'}
+                  {dispatch.tracking_number ? (
+                    <CopyableText text={dispatch.tracking_number} />
+                  ) : '-'}
                 </TableCell>
                 <TableCell>
                   <Badge className={statusColors[dispatch.status] || 'bg-muted'}>
@@ -141,32 +148,41 @@ export function DispatchesTable({ searchQuery = '', statusFilter = 'all' }: Disp
                   </Badge>
                 </TableCell>
                 <TableCell className="text-right">
-                  <DropdownMenu>
-                    <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
-                      <Button variant="ghost" size="icon">
-                        <MoreHorizontal className="h-4 w-4" />
-                      </Button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end">
-                      <DropdownMenuItem onClick={(e) => { e.stopPropagation(); handleView(dispatch); }}>
-                        <Eye className="mr-2 h-4 w-4" />
-                        View Details
-                      </DropdownMenuItem>
-                      {isAdmin && (
-                        <DropdownMenuItem
-                          className="text-destructive"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setDispatchToDelete(dispatch);
-                            setDeleteDialogOpen(true);
-                          }}
-                        >
-                          <Trash2 className="mr-2 h-4 w-4" />
-                          Delete
+                  <div className="flex items-center justify-end gap-1">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-8 px-2 text-xs"
+                      onClick={() => handleView(dispatch)}
+                    >
+                      <Eye className="h-3.5 w-3.5 mr-1" /> View
+                    </Button>
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button variant="ghost" size="icon" className="h-8 w-8">
+                          <MoreHorizontal className="h-4 w-4" />
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end">
+                        <DropdownMenuItem onClick={() => handleView(dispatch)}>
+                          <Eye className="mr-2 h-4 w-4" />
+                          View Details
                         </DropdownMenuItem>
-                      )}
-                    </DropdownMenuContent>
-                  </DropdownMenu>
+                        {isAdmin && (
+                          <DropdownMenuItem
+                            className="text-destructive"
+                            onClick={() => {
+                              setDispatchToDelete(dispatch);
+                              setDeleteDialogOpen(true);
+                            }}
+                          >
+                            <Trash2 className="mr-2 h-4 w-4" />
+                            Delete
+                          </DropdownMenuItem>
+                        )}
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  </div>
                 </TableCell>
               </TableRow>
             ))}

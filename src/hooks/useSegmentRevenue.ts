@@ -76,6 +76,8 @@ export function useSegmentRevenue(dateRange?: DateRange, assignedTo?: string, en
         }))
         .filter(d => d.revenue > 0 || d.orderCount > 0);
     },
-    staleTime: 5 * 60 * 1000,
+    staleTime: 60 * 1000,
+    refetchOnWindowFocus: false,
+    refetchOnMount: false,
   });
 }

@@ -1,6 +1,6 @@
 import { Helmet } from "react-helmet-async";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Settings as SettingsIcon, Plug, Building, Users, Shield, User, Clock, Wallet, Mail, MapPin, Megaphone, Building2, CreditCard, UsersRound, Globe, FileText } from "lucide-react";
+import { Settings as SettingsIcon, Plug, Building, Users, Shield, User, Clock, Wallet, Mail, MapPin, Megaphone, Building2, UsersRound, Globe, FileText, RefreshCw } from "lucide-react";
 import { IntegrationsSettings } from "@/components/settings/IntegrationsSettings";
 import { CompanyProfileSettings } from "@/components/settings/CompanyProfileSettings";
 import { EmailSenderSettings } from "@/components/settings/EmailSenderSettings";
@@ -14,13 +14,13 @@ import { EmailTemplatesManagement } from "@/components/settings/EmailTemplatesMa
 import { CustomerOutreachManagement } from "@/components/settings/CustomerOutreachManagement";
 import { CompanyDefaults } from "@/components/settings/CompanyDefaults";
 import { LocalizationSettings } from "@/components/settings/LocalizationSettings";
-import { SubscriptionManagement } from "@/components/settings/SubscriptionManagement";
 import { TenantTeamManagement } from "@/components/settings/TenantTeamManagement";
 import { GstApiSettings } from "@/components/settings/GstApiSettings";
+import { SyncSettings } from "@/components/settings/SyncSettings";
 import { useAuth } from "@/hooks/useAuth";
 import { useTenantStatus } from "@/hooks/useTenantStatus";
 import { useTranslation } from "@/lib/i18n";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 
 const Settings = () => {
@@ -28,6 +28,8 @@ const Settings = () => {
   const { tenantRole, hasTenant } = useTenantStatus();
   const { t } = useTranslation();
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const activeTab = searchParams.get('tab') || 'profile';
   
   const canAccessHRTabs = isAdmin || isHR;
   const canAccessEmailTemplates = isAdmin || isManager;
@@ -54,7 +56,7 @@ const Settings = () => {
           <div className="rounded-lg border-2 border-primary/30 bg-primary/5 p-6 flex items-center justify-between">
             <div>
               <h3 className="text-lg font-semibold text-foreground">{t('settings.complete_setup', 'Complete Organization Setup')}</h3>
-              <p className="text-sm text-muted-foreground mt-1">{t('settings.complete_setup_desc', 'Set up your company profile, invite team members, and choose a plan to unlock all features.')}</p>
+              <p className="text-sm text-muted-foreground mt-1">{t('settings.complete_setup_desc', 'Set up your company profile and invite team members to unlock all features.')}</p>
             </div>
             <Button onClick={() => navigate('/onboarding')} className="shrink-0 ml-4">
               <Building2 className="mr-2 h-4 w-4" />
@@ -63,19 +65,12 @@ const Settings = () => {
           </div>
         )}
 
-        <Tabs defaultValue="profile" className="space-y-6">
+        <Tabs value={activeTab} onValueChange={(val) => setSearchParams({ tab: val })} className="space-y-6">
           <TabsList className="flex flex-wrap gap-1 h-auto p-1">
             <TabsTrigger value="profile" className="flex items-center gap-2">
               <User className="h-4 w-4" />
               <span className="hidden sm:inline">Profile</span>
             </TabsTrigger>
-
-            {isTenantOwnerOrAdmin && (
-              <TabsTrigger value="subscription" className="flex items-center gap-2">
-                <CreditCard className="h-4 w-4" />
-                <span className="hidden sm:inline">Subscription</span>
-              </TabsTrigger>
-            )}
 
             {isTenantOwnerOrAdmin && (
               <TabsTrigger value="team" className="flex items-center gap-2">
@@ -161,17 +156,16 @@ const Settings = () => {
                 <span className="hidden sm:inline">Security</span>
               </TabsTrigger>
             )}
+
+            <TabsTrigger value="sync" className="flex items-center gap-2">
+              <RefreshCw className="h-4 w-4" />
+              <span className="hidden sm:inline">Sync</span>
+            </TabsTrigger>
           </TabsList>
 
           <TabsContent value="profile">
             <ProfileSettings />
           </TabsContent>
-
-          {isTenantOwnerOrAdmin && (
-            <TabsContent value="subscription">
-              <SubscriptionManagement />
-            </TabsContent>
-          )}
 
           {isTenantOwnerOrAdmin && (
             <TabsContent value="team" className="space-y-6">
@@ -290,6 +284,10 @@ const Settings = () => {
               </div>
             </TabsContent>
           )}
+
+          <TabsContent value="sync">
+            <SyncSettings />
+          </TabsContent>
         </Tabs>
       </div>
     </>

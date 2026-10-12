@@ -10,8 +10,8 @@ import { OrderStatusTimeline } from './OrderStatusTimeline';
 import { RecordGRNDialog } from './RecordGRNDialog';
 import { CreateDispatchDialog } from '@/components/dispatch/CreateDispatchDialog';
 import { UpdateOrderStatusDialog } from '@/components/orders/UpdateOrderStatusDialog';
-import { format } from 'date-fns';
 import { downloadFile } from '@/lib/download-utils';
+import { OrderDocumentsList } from '@/components/orders/OrderDocumentsList';
 
 interface LinkedPO {
   id: string;
@@ -218,33 +218,10 @@ export function OrderTrackingCard({ order }: { order: SalesOrderWithDetails }) {
         {/* Documents */}
         <div className="space-y-2">
           <p className="text-sm text-muted-foreground">Documents</p>
-          <div className="flex flex-wrap gap-2">
-            {customerPO && (
-              <Button 
-                variant="outline" 
-                size="sm" 
-                className="gap-1"
-                onClick={() => downloadFile(customerPO.file_url, customerPO.file_name)}
-              >
-                <FileText className="h-3 w-3" />
-                Customer PO
-                <Download className="h-3 w-3" />
-              </Button>
-            )}
-            {paymentReceipt && (
-              <Button 
-                variant="outline" 
-                size="sm" 
-                className="gap-1"
-                onClick={() => downloadFile(paymentReceipt.file_url, paymentReceipt.file_name)}
-              >
-                <Receipt className="h-3 w-3" />
-                Receipt
-                <Download className="h-3 w-3" />
-              </Button>
-            )}
+          <div className="space-y-1.5">
+            <OrderDocumentsList salesOrderId={order.id} documents={documents} compact />
             {order.quotation && (
-              <Button variant="outline" size="sm" asChild className="gap-1">
+              <Button variant="outline" size="sm" asChild className="gap-1 h-7 text-xs">
                 <Link to={`/leads/${order.lead_id}?tab=quotations`}>
                   <FileText className="h-3 w-3" />
                   {order.quotation.quotation_number}

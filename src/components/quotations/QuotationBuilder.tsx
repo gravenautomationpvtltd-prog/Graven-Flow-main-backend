@@ -7,7 +7,8 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Separator } from '@/components/ui/separator';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Plus, FileText, Send, Download, MessageSquare, Mail, Pencil, Save, Cloud, Loader2 } from 'lucide-react';
+import { Plus, FileText, Send, Download, Mail, Pencil, Save, Cloud, Loader2 } from 'lucide-react';
+import { WhatsAppIcon } from '@/components/icons/WhatsAppIcon';
 import { QuotationLineItem } from './QuotationLineItem';
 import { useProducts, useCreateQuotation, useUpdateQuotation, type QuotationItem, type QuotationWithDetails } from '@/hooks/useQuotations';
 import { useCreateDraftQuotation, useUpdateDraftQuotation } from '@/hooks/useDraftQuotation';
@@ -78,12 +79,21 @@ function convertEnquiryToQuotationItems(enquiryItems: PrePopulatedItem[]): Quota
       product?.description || null,
       product?.model_number || null,
     );
+    const hasDim = (product as any)?.length_cm != null && (product as any)?.width_cm != null && (product as any)?.height_cm != null &&
+      Number((product as any)?.length_cm) > 0 && Number((product as any)?.width_cm) > 0 && Number((product as any)?.height_cm) > 0;
+    const dim = hasDim
+      ? `${(product as any).length_cm} × ${(product as any).width_cm} × ${(product as any).height_cm} CM`
+      : null;
+    const unitWeight = (product as any)?.weight_kg != null && Number((product as any)?.weight_kg) > 0 ? Number((product as any)?.weight_kg) : null;
+    const qty = item.quantity || 1;
+    const totalWeight = unitWeight !== null && qty > 0 ? Math.round(unitWeight * qty * 1000) / 1000 : null;
+
     const baseItem: QuotationItem = {
       description: productDescription || item.product_query_text,
       model_number: product?.model_number || null,
       product_description: productDescription || null,
       hsn_code: product?.hsn_code || '',
-      quantity: item.quantity || 1,
+      quantity: qty,
       unit: product?.unit || 'Nos',
       rate: product?.default_rate || 0,
       target_rate: item.target_rate || null,
@@ -95,6 +105,10 @@ function convertEnquiryToQuotationItems(enquiryItems: PrePopulatedItem[]): Quota
       sort_order: index,
       product_id: product?.id,
       enquiry_item_id: item.id, // Link back to enquiry item
+      dimensions: dim,
+      unit_weight_kg: unitWeight,
+      weight_kg: unitWeight,
+      total_weight_kg: totalWeight,
     };
     
     // Calculate amounts
@@ -141,6 +155,8 @@ export function QuotationBuilder({
   const autoSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [draftStatus, setDraftStatus] = useState<'saved' | 'saving' | 'unsaved'>('unsaved');
   const isAutoSavingRef = useRef(false);
+  const isSubmittingRef = useRef(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   // Determine initial items: explicit override > seed quotation > pre-populated items > default
   const getInitialItems = (): QuotationItem[] => {
@@ -197,6 +213,10 @@ export function QuotationBuilder({
   const totalDiscount = items.reduce((sum, item) => sum + item.discount_amount, 0);
   const totalTax = items.reduce((sum, item) => sum + item.tax_amount, 0);
   const grandTotal = items.reduce((sum, item) => sum + item.amount, 0);
+  const totalWeight = items.reduce((sum, item) => {
+    const wt = item.total_weight_kg ?? ((item.unit_weight_kg || (item as any).weight_kg) ? Number(item.unit_weight_kg || (item as any).weight_kg) * (item.quantity || 0) : 0);
+    return sum + (Number(wt) || 0);
+  }, 0);
 
   // ===== Payment schedule (advance / balance) =====
   const [advanceMode, setAdvanceMode] = useState<'percent' | 'amount'>(
@@ -256,8 +276,8 @@ export function QuotationBuilder({
 
     // Set new timer for 3 seconds (slightly longer for DB operations)
     autoSaveTimerRef.current = setTimeout(async () => {
-      // Prevent concurrent auto-saves
-      if (isAutoSavingRef.current) return;
+      // Prevent concurrent auto-saves or auto-save while submission is in progress
+      if (isAutoSavingRef.current || isSubmittingRef.current) return;
       isAutoSavingRef.current = true;
       
       setDraftStatus('saving');
@@ -326,12 +346,17 @@ export function QuotationBuilder({
     const afterDiscount = baseAmount - discountAmount;
     const taxAmount = (afterDiscount * item.tax_percent) / 100;
     const totalAmount = afterDiscount + taxAmount;
+    const unitWt = item.unit_weight_kg ?? (item as any).weight_kg ?? null;
+    const totalWeight = (unitWt !== null && unitWt !== undefined && item.quantity > 0)
+      ? Math.round(Number(unitWt) * Number(item.quantity) * 1000) / 1000
+      : null;
 
     return {
       ...item,
       discount_amount: discountAmount,
       tax_amount: taxAmount,
       amount: totalAmount,
+      total_weight_kg: totalWeight,
     };
   }, []);
 
@@ -363,6 +388,16 @@ export function QuotationBuilder({
             product.description || null,
             product.model_number || null,
           );
+          const hasDim = (product as any).length_cm != null && (product as any).width_cm != null && (product as any).height_cm != null &&
+            Number((product as any).length_cm) > 0 && Number((product as any).width_cm) > 0 && Number((product as any).height_cm) > 0;
+          const dim = hasDim
+            ? `${(product as any).length_cm} × ${(product as any).width_cm} × ${(product as any).height_cm} CM`
+            : null;
+          const unitWeight = (product as any).weight_kg != null && Number((product as any).weight_kg) > 0 ? Number((product as any).weight_kg) : null;
+          const totalWeight = unitWeight !== null && (newItems[index].quantity || 1) > 0
+            ? Math.round(unitWeight * (newItems[index].quantity || 1) * 1000) / 1000
+            : null;
+
           newItems[index] = calculateItemAmount({
             ...newItems[index],
             product_id: product.id,
@@ -373,12 +408,16 @@ export function QuotationBuilder({
             unit: product.unit || 'Nos',
             rate: product.default_rate || 0,
             tax_percent: product.tax_rate || 18,
+            dimensions: dim,
+            unit_weight_kg: unitWeight,
+            weight_kg: unitWeight,
+            total_weight_kg: totalWeight,
           });
           return newItems;
         });
       }
     },
-    [products, calculateItemAmount]
+    [products, calculateItemAmount, handleUpdateItem]
   );
 
   const lastItemRef = useRef<HTMLDivElement>(null);
@@ -463,6 +502,12 @@ export function QuotationBuilder({
   };
 
   const handleSave = async (sendVia?: 'whatsapp' | 'email') => {
+    // Prevent repeated clicks or concurrent submissions
+    if (isSubmittingRef.current) {
+      console.warn('[QuotationBuilder] Submission already in flight. Ignoring duplicate trigger.');
+      return;
+    }
+
     // Validate
     if (items.every((item) => !item.description.trim())) {
       toast.error('Please add at least one item with a description');
@@ -470,6 +515,13 @@ export function QuotationBuilder({
     }
 
     const validItems = items.filter((item) => item.description.trim());
+
+    // Synchronously acquire submission lock immediately
+    isSubmittingRef.current = true;
+    setIsSubmitting(true);
+    if (autoSaveTimerRef.current) {
+      clearTimeout(autoSaveTimerRef.current);
+    }
 
     try {
       if (isEditing && existingQuotation) {
@@ -504,8 +556,6 @@ export function QuotationBuilder({
         onSuccess?.(existingQuotation.id);
       } else if (draftQuotationId) {
         // Draft exists in DB - update it to 'pending' instead of creating duplicate
-        if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current);
-        
         await updateQuotation.mutateAsync({
           id: draftQuotationId,
           quotation: {
@@ -539,8 +589,7 @@ export function QuotationBuilder({
 
         onSuccess?.(draftQuotationId);
       } else {
-        // No draft exists - cancel auto-save and wait for any in-progress auto-save
-        if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current);
+        // No draft exists - wait for any in-progress auto-save
         while (isAutoSavingRef.current) {
           await new Promise(r => setTimeout(r, 100));
         }
@@ -593,6 +642,9 @@ export function QuotationBuilder({
           items: validItems,
         });
 
+        // Store created ID so any subsequent save treats it as existing
+        setDraftQuotationId(result.id);
+
         if (sendVia === 'whatsapp' && customerPhone) {
           let cleanPhone = customerPhone.replace(/\D/g, '');
           if (cleanPhone.length === 10) cleanPhone = '91' + cleanPhone;
@@ -606,10 +658,13 @@ export function QuotationBuilder({
       }
     } catch {
       // Error handled in hook
+    } finally {
+      isSubmittingRef.current = false;
+      setIsSubmitting(false);
     }
   };
 
-  const isPending = createQuotation.isPending || updateQuotation.isPending;
+  const isPending = createQuotation.isPending || updateQuotation.isPending || isSubmitting;
 
   return (
     <div className="space-y-6">
@@ -784,6 +839,12 @@ export function QuotationBuilder({
                 <span className="text-muted-foreground">Total Tax (GST)</span>
                 <span>{formatCurrency(totalTax)}</span>
               </div>
+              {totalWeight > 0 && (
+                <div className="flex justify-between text-sm text-muted-foreground pb-0.5">
+                  <span>Total Est. Weight</span>
+                  <span className="font-mono font-medium text-foreground">{totalWeight.toFixed(2)} kg</span>
+                </div>
+              )}
               <Separator />
               <div className="flex justify-between text-lg font-semibold">
                 <span>Grand Total</span>
@@ -944,13 +1005,13 @@ export function QuotationBuilder({
               disabled={isPending}
               className="bg-green-600 hover:bg-green-700"
             >
-              <MessageSquare className="h-4 w-4 mr-2" />
+              <WhatsAppIcon className="h-4 w-4 mr-2" />
               Send WhatsApp
             </Button>
           )}
 
           <Button onClick={() => handleSave()} disabled={isPending}>
-            <Send className="h-4 w-4 mr-2" />
+            {isSubmitting ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Send className="h-4 w-4 mr-2" />}
             {isEditing ? 'Update Quotation' : 'Create Quotation'}
           </Button>
         </div>

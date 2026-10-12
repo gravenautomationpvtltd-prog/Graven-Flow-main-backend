@@ -31,6 +31,8 @@ import { RecordGRNDialog } from '@/components/procurement/RecordGRNDialog';
 import { CreateDispatchDialog } from '@/components/dispatch/CreateDispatchDialog';
 import { UpdateOrderStatusDialog } from '@/components/orders/UpdateOrderStatusDialog';
 import { GenerateEInvoiceDialog } from '@/components/orders/GenerateEInvoiceDialog';
+import { UploadOrderDocumentDialog } from '@/components/orders/UploadOrderDocumentDialog';
+import { OrderDocumentsList } from '@/components/orders/OrderDocumentsList';
 import { supabase } from '@/integrations/supabase/client';
 import { format } from 'date-fns';
 import { downloadFile } from '@/lib/download-utils';
@@ -117,6 +119,7 @@ export default function OrderDetail() {
   const [dispatchDialogOpen, setDispatchDialogOpen] = useState(false);
   const [statusDialogOpen, setStatusDialogOpen] = useState(false);
   const [einvoiceDialogOpen, setEinvoiceDialogOpen] = useState(false);
+  const [uploadDocOpen, setUploadDocOpen] = useState(false);
 
   useEffect(() => {
     if (!id) return;
@@ -598,50 +601,30 @@ export default function OrderDetail() {
 
           {/* Documents */}
           <Card>
-            <CardHeader className="pb-3">
+            <CardHeader className="pb-3 flex flex-row items-center justify-between">
               <CardTitle className="text-lg">Documents</CardTitle>
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-8 gap-1"
+                onClick={() => setUploadDocOpen(true)}
+              >
+                <Plus className="h-3.5 w-3.5" />
+                Upload
+              </Button>
             </CardHeader>
-            <CardContent>
-              <div className="space-y-2">
-                {customerPO && (
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="w-full justify-start gap-2"
-                    onClick={() => downloadFile(customerPO.file_url, customerPO.file_name)}
-                  >
-                    <FileText className="h-4 w-4 text-blue-600" />
-                    Customer PO
-                    <Download className="h-3 w-3 ml-auto" />
-                  </Button>
-                )}
-                {paymentReceipt && (
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="w-full justify-start gap-2"
-                    onClick={() => downloadFile(paymentReceipt.file_url, paymentReceipt.file_name)}
-                  >
-                    <Receipt className="h-4 w-4 text-green-600" />
-                    Payment Receipt
-                    <Download className="h-3 w-3 ml-auto" />
-                  </Button>
-                )}
-                {order.quotation && (
-                  <Button variant="outline" size="sm" className="w-full justify-start gap-2" asChild>
-                    <Link to={`/leads/${order.lead_id}?tab=quotations`}>
-                      <FileText className="h-4 w-4" />
-                      {order.quotation.quotation_number}
-                      <ExternalLink className="h-3 w-3 ml-auto" />
-                    </Link>
-                  </Button>
-                )}
-                {!customerPO && !paymentReceipt && !order.quotation && (
-                  <p className="text-sm text-muted-foreground text-center py-4">
-                    No documents uploaded
-                  </p>
-                )}
-              </div>
+            <CardContent className="space-y-3">
+              <OrderDocumentsList salesOrderId={order.id} documents={documents} />
+
+              {order.quotation && (
+                <Button variant="outline" size="sm" className="w-full justify-start gap-2" asChild>
+                  <Link to={`/leads/${order.lead_id}?tab=quotations`}>
+                    <FileText className="h-4 w-4" />
+                    Quotation: {order.quotation.quotation_number}
+                    <ExternalLink className="h-3 w-3 ml-auto" />
+                  </Link>
+                </Button>
+              )}
             </CardContent>
           </Card>
 
@@ -690,6 +673,14 @@ export default function OrderDetail() {
         onOpenChange={setEinvoiceDialogOpen}
         orderId={order.id}
         orderNumber={order.order_number}
+      />
+
+      <UploadOrderDocumentDialog
+        open={uploadDocOpen}
+        onOpenChange={setUploadDocOpen}
+        orderId={order?.id}
+        orderNumber={order?.order_number}
+        order={order}
       />
     </div>
   );

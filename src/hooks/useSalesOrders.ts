@@ -1,3 +1,4 @@
+import { useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
@@ -40,6 +41,7 @@ export interface SalesOrderWithDetails extends SalesOrder {
   lead?: {
     id: string;
     title: string;
+    assigned_to?: string | null;
   } | null;
   quotation?: {
     id: string;
@@ -68,6 +70,7 @@ export interface SalesOrderWithDetails extends SalesOrder {
     name: string;
   } | null;
   linked_po_summary?: LinkedPOSummary[];
+  documents?: OrderDocument[];
 }
 
 /** Compute Net Sales: quotation.subtotal - discount, fallback to gross order_value. */
@@ -85,11 +88,12 @@ export function computeNetValue(order: {
 export interface OrderDocument {
   id: string;
   sales_order_id: string;
-  document_type: 'customer_po' | 'payment_receipt' | 'other';
+  document_type: 'customer_po' | 'payment_receipt' | 'other' | string;
   file_name: string;
   file_url: string;
   uploaded_by: string | null;
   created_at: string;
+  notes?: string | null;
 }
 
 export function useSalesOrders(status?: SalesOrder['status'] | 'all') {
@@ -97,19 +101,23 @@ export function useSalesOrders(status?: SalesOrder['status'] | 'all') {
   
   return useQuery({
     queryKey: ['sales-orders', status, user?.id],
+    staleTime: 60_000,
+    refetchOnWindowFocus: false,
     queryFn: async () => {
       const baseQuery = supabase
         .from('sales_orders')
         .select(`
           *,
-          lead:leads(id, title),
+          lead:leads(id, title, assigned_to),
           quotation:quotations!sales_orders_quotation_id_fkey(id, quotation_number, grand_total, subtotal, total_discount),
           customer:customers(id, company_name),
           creator:profiles!sales_orders_created_by_fkey(id, full_name),
           assigned_procurement_profile:profiles!sales_orders_assigned_procurement_fkey(id, full_name),
-          preferred_supplier:suppliers!sales_orders_preferred_supplier_id_fkey(id, name)
+          preferred_supplier:suppliers!sales_orders_preferred_supplier_id_fkey(id, name),
+          documents:order_documents(*)
         `)
-        .order('created_at', { ascending: false });
+        .order('created_at', { ascending: false })
+        .limit(200);
 
       // Use filter instead of eq to avoid strict type checking
       const query = status && status !== 'all' 
@@ -205,6 +213,8 @@ export function useSalesOrderByLead(leadId: string | undefined) {
           preferred_supplier:suppliers!sales_orders_preferred_supplier_id_fkey(id, name)
         `)
         .eq('lead_id', leadId)
+        .order('created_at', { ascending: false })
+        .limit(1)
         .maybeSingle();
       if (error) throw error;
       if (!data) return null;
@@ -215,6 +225,33 @@ export function useSalesOrderByLead(leadId: string | undefined) {
 }
 
 export function useOrderDocuments(salesOrderId: string | undefined) {
+  const queryClient = useQueryClient();
+
+  useEffect(() => {
+    if (!salesOrderId) return;
+    const channel = supabase
+      .channel(`order-documents-${salesOrderId}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'order_documents',
+          filter: `sales_order_id=eq.${salesOrderId}`,
+        },
+        () => {
+          queryClient.invalidateQueries({ queryKey: ['order-documents', salesOrderId] });
+          queryClient.invalidateQueries({ queryKey: ['sales-orders'] });
+          queryClient.invalidateQueries({ queryKey: ['sales-order', salesOrderId] });
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [salesOrderId, queryClient]);
+
   return useQuery({
     queryKey: ['order-documents', salesOrderId],
     queryFn: async () => {
@@ -247,6 +284,23 @@ export function useCreateSalesOrder() {
     }) => {
       await ensureFreshSession();
       const tenantId = await requireTenantId();
+
+      // Idempotency pre-check: If an active order already exists for this lead, return it
+      if (data.lead_id) {
+        const { data: existingActiveOrder } = await supabase
+          .from('sales_orders')
+          .select('*')
+          .eq('lead_id', data.lead_id)
+          .neq('status', 'cancelled')
+          .order('created_at', { ascending: false })
+          .limit(1)
+          .maybeSingle();
+
+        if (existingActiveOrder) {
+          console.log('Order already exists for this lead, returning existing order (idempotency):', existingActiveOrder.order_number);
+          return existingActiveOrder;
+        }
+      }
       
       const insertPayload = {
         lead_id: data.lead_id,
@@ -278,11 +332,30 @@ export function useCreateSalesOrder() {
           .single();
       }
 
+      // Concurrency collision safeguard on unique lead constraint: return existing order
+      if (result.error?.code === '23505' && (result.error?.message?.includes('idx_sales_orders_unique_active_lead') || result.error?.message?.includes('lead_id'))) {
+        console.warn('Concurrent order creation detected, returning existing order...');
+        const { data: existing } = await supabase
+          .from('sales_orders')
+          .select('*')
+          .eq('lead_id', data.lead_id)
+          .neq('status', 'cancelled')
+          .order('created_at', { ascending: false })
+          .limit(1)
+          .single();
+        if (existing) {
+          return existing;
+        }
+      }
+
       if (result.error) throw result.error;
       return result.data;
     },
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ['sales-orders'] });
+      if (data?.lead_id) {
+        queryClient.invalidateQueries({ queryKey: ['sales-order-by-lead', data.lead_id] });
+      }
       toast.success('Sales order created');
       logActivity({
         action: 'create',
@@ -383,6 +456,18 @@ export function useUploadOrderDocument() {
     },
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ['order-documents', data.sales_order_id] });
+      queryClient.invalidateQueries({ queryKey: ['sales-orders'] });
+      queryClient.invalidateQueries({ queryKey: ['sales-order', data.sales_order_id] });
+      queryClient.invalidateQueries({ queryKey: ['sales-order-by-lead'] });
+      queryClient.invalidateQueries({ queryKey: ['leads'] });
+      queryClient.invalidateQueries({ queryKey: ['quotations'] });
+      queryClient.invalidateQueries({ queryKey: ['employee-orders'] });
+      queryClient.invalidateQueries({ queryKey: ['employee-deals'] });
+      queryClient.invalidateQueries({ queryKey: ['employee-quotations'] });
+      queryClient.invalidateQueries({ queryKey: ['customer-po-ledger'] });
+      queryClient.invalidateQueries({ queryKey: ['finance-orders'] });
+      queryClient.invalidateQueries({ queryKey: ['cct-order-detail'] });
+      queryClient.invalidateQueries({ queryKey: ['cct-order-inbox'] });
       toast.success('Document uploaded');
     },
     onError: (error) => {

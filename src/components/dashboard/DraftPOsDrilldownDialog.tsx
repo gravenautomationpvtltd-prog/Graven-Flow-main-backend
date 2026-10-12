@@ -4,8 +4,9 @@ import { supabase } from '@/integrations/supabase/client';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Table, TableHeader, TableHead, TableBody, TableRow, TableCell } from '@/components/ui/table';
 import { Button } from '@/components/ui/button';
-import { ExternalLink } from 'lucide-react';
+import { ExternalLink, Eye } from 'lucide-react';
 import { format } from 'date-fns';
+import { CopyableText } from '@/components/shared/CopyableText';
 
 interface Props {
   open: boolean;
@@ -63,19 +64,37 @@ export function DraftPOsDrilldownDialog({ open, onOpenChange, dateRange }: Props
               <TableHead>Supplier</TableHead>
               <TableHead className="text-right">Amount</TableHead>
               <TableHead>Created</TableHead>
+              <TableHead className="w-[80px] text-right">Actions</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {isLoading ? (
-              <TableRow><TableCell colSpan={4} className="text-center py-8 text-muted-foreground">Loading...</TableCell></TableRow>
+              <TableRow><TableCell colSpan={5} className="text-center py-8 text-muted-foreground">Loading...</TableCell></TableRow>
             ) : pos.length === 0 ? (
-              <TableRow><TableCell colSpan={4} className="text-center py-8 text-muted-foreground">No draft POs found</TableCell></TableRow>
+              <TableRow><TableCell colSpan={5} className="text-center py-8 text-muted-foreground">No draft POs found</TableCell></TableRow>
             ) : pos.map((po: any) => (
-              <TableRow key={po.id} className="cursor-pointer hover:bg-muted/50" onClick={() => { onOpenChange(false); navigate(`/procurement/po/${po.id}`); }}>
-                <TableCell className="font-medium">{po.po_number || '—'}</TableCell>
-                <TableCell>{po.supplier?.company_name || '—'}</TableCell>
+              <TableRow key={po.id}>
+                <TableCell className="font-medium">
+                  {po.po_number ? <CopyableText text={po.po_number} /> : '—'}
+                </TableCell>
+                <TableCell>
+                  {po.supplier?.company_name ? <CopyableText text={po.supplier.company_name} /> : '—'}
+                </TableCell>
                 <TableCell className="text-right font-medium">₹{Math.round(po.total_amount || 0).toLocaleString('en-IN')}</TableCell>
                 <TableCell>{format(new Date(po.created_at), 'dd MMM yyyy')}</TableCell>
+                <TableCell className="text-right">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-8 px-2 text-xs"
+                    onClick={() => {
+                      onOpenChange(false);
+                      navigate(`/procurement/po/${po.id}`);
+                    }}
+                  >
+                    <Eye className="h-3.5 w-3.5 mr-1" /> View
+                  </Button>
+                </TableCell>
               </TableRow>
             ))}
           </TableBody>

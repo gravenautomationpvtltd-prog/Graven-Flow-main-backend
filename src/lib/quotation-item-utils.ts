@@ -6,6 +6,12 @@ type ProductPrintFields = {
   model_number: string | null;
   description: string | null;
   name: string | null;
+  weight_kg?: number | null;
+  unit_weight_kg?: number | null;
+  length_cm?: number | null;
+  width_cm?: number | null;
+  height_cm?: number | null;
+  dimensions?: string | null;
 };
 
 function printableProductDescription(product?: Pick<ProductPrintFields, 'description' | 'name' | 'model_number'> | null) {
@@ -31,7 +37,7 @@ export async function ensureItemsWithModelNumber(
   if (!items || items.length === 0) {
     const { data, error } = await supabase
       .from('quotation_items')
-      .select('*, product:products(model_number, description, name)')
+      .select('*, product:products(model_number, description, name, weight_kg, length_cm, width_cm, height_cm)')
       .eq('quotation_id', quotationId)
       .order('sort_order');
     if (error) throw error;
@@ -47,16 +53,26 @@ export async function ensureItemsWithModelNumber(
         printableProductDescription(it.product),
         it.product?.model_number ?? it.model_number ?? null,
       ) || null,
+      weight_kg: it.weight_kg ?? it.unit_weight_kg ?? it.product?.weight_kg ?? it.product?.unit_weight_kg ?? null,
+      unit_weight_kg: it.unit_weight_kg ?? it.weight_kg ?? it.product?.unit_weight_kg ?? it.product?.weight_kg ?? null,
+      length_cm: it.length_cm ?? it.product?.length_cm ?? null,
+      width_cm: it.width_cm ?? it.product?.width_cm ?? null,
+      height_cm: it.height_cm ?? it.product?.height_cm ?? null,
+      dimensions: it.dimensions ?? null,
+      product: it.product || undefined,
     }));
   }
 
   // Items exist — check if any need catalog print-field resolution
   const missing = items.filter((it: any) => {
     if (!it?.product_id) return false;
+    // If product details are already joined/present, no need to refetch
+    if (it.product && (it.product.model_number || it.model_number) && (it.product.description || it.product_description)) return false;
     const model = it?.model_number ?? null;
     return (
       !model ||
       !it?.product_description ||
+      (it?.weight_kg == null && it?.length_cm == null && !it?.product) ||
       isLikelyTruncatedDescription(it.product_description, model) ||
       isLikelyTruncatedDescription(it.description, model)
     );
@@ -66,7 +82,7 @@ export async function ensureItemsWithModelNumber(
   const productIds = Array.from(new Set(missing.map((it: any) => it.product_id)));
   const { data: products } = await supabase
     .from('products')
-    .select('id, model_number, description, name')
+    .select('id, model_number, description, name, weight_kg, length_cm, width_cm, height_cm')
     .in('id', productIds);
 
   const map = new Map<string, ProductPrintFields>();
@@ -89,6 +105,13 @@ export async function ensureItemsWithModelNumber(
       ...it,
       model_number: modelNumber,
       product_description: bestDescription || null,
+      weight_kg: it.weight_kg ?? it.unit_weight_kg ?? product?.weight_kg ?? null,
+      unit_weight_kg: it.unit_weight_kg ?? it.weight_kg ?? product?.weight_kg ?? null,
+      length_cm: it.length_cm ?? product?.length_cm ?? null,
+      width_cm: it.width_cm ?? product?.width_cm ?? null,
+      height_cm: it.height_cm ?? product?.height_cm ?? null,
+      dimensions: it.dimensions ?? null,
+      product: it.product || product || undefined,
     };
   });
 }

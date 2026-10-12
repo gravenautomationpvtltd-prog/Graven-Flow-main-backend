@@ -10,6 +10,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { format } from 'date-fns';
 import { downloadFile } from '@/lib/download-utils';
+import { OrderDocumentsList } from '@/components/orders/OrderDocumentsList';
 
 interface LeadOrderSectionProps {
   leadId: string;
@@ -352,32 +353,7 @@ export function LeadOrderSection({ leadId }: LeadOrderSectionProps) {
         {/* Documents */}
         <div className="space-y-2">
           <p className="text-sm font-medium text-muted-foreground">Documents</p>
-          <div className="flex flex-wrap gap-2">
-            {customerPO && (
-              <Button 
-                variant="outline" 
-                size="sm" 
-                className="gap-2"
-                onClick={() => downloadFile(customerPO.file_url, customerPO.file_name)}
-              >
-                <FileText className="h-4 w-4 text-blue-600" />
-                Customer PO
-                <Download className="h-3 w-3" />
-              </Button>
-            )}
-            {paymentReceipt && (
-              <Button 
-                variant="outline" 
-                size="sm" 
-                className="gap-2"
-                onClick={() => downloadFile(paymentReceipt.file_url, paymentReceipt.file_name)}
-              >
-                <Receipt className="h-4 w-4 text-green-600" />
-                Payment Receipt
-                <Download className="h-3 w-3" />
-              </Button>
-            )}
-          </div>
+          <OrderDocumentsList salesOrderId={order.id} documents={documents} compact />
         </div>
 
         {/* Quotation Link */}

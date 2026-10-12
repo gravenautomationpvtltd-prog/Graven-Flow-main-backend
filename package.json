@@ -8,7 +8,11 @@
     "build": "vite build",
     "build:dev": "vite build --mode development",
     "lint": "eslint .",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "sync:indiamart": "node tools/indiamart-sync-worker.mjs",
+    "sync:tradeindia": "node tools/tradeindia-sync-worker.mjs",
+    "backup:leads": "node tools/backup-leads.mjs",
+    "restore:leads": "node tools/restore-leads-to-supabase.mjs"
   },
   "dependencies": {
     "@ai-sdk/openai-compatible": "^3.0.14",
@@ -62,6 +66,7 @@
     "lucide-react": "^0.462.0",
     "next-themes": "^0.3.0",
     "papaparse": "^5.5.4",
+    "pg": "^8.23.1",
     "qrcode": "^1.5.4",
     "qrcode.react": "^4.2.0",
     "react": "^18.3.1",

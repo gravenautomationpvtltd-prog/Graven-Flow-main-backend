@@ -4,7 +4,6 @@ import { supabase } from '@/integrations/supabase/client';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
-import { Button } from '@/components/ui/button';
 import {
   Table,
   TableBody,
@@ -19,9 +18,10 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from '@/components/ui/tooltip';
-import { Search, TrendingDown, AlertTriangle, Users, Target, Percent, ExternalLink, Loader2 } from 'lucide-react';
+import { Search, TrendingDown, AlertTriangle, Users, Target, Percent, Loader2 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { formatCurrencyWithSymbol } from '@/lib/currency-utils';
+import { CopyableText } from '@/components/shared/CopyableText';
 
 interface CustomerBehavior {
   customer_id: string;
@@ -301,7 +301,6 @@ export function CustomerBehaviorTab() {
                   <TableHead className="text-right">Avg Gap %</TableHead>
                   <TableHead className="text-right">Aggressive Targets</TableHead>
                   <TableHead className="text-right">Total Target vs Quoted</TableHead>
-                  <TableHead className="text-right">Actions</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -310,7 +309,11 @@ export function CustomerBehaviorTab() {
                   return (
                     <TableRow key={customer.customer_id}>
                       <TableCell className="font-medium">
-                        {customer.company_name}
+                        <CopyableText
+                          text={customer.company_name}
+                          label="company name"
+                          onClickText={() => navigate(`/customers/${customer.customer_id}`)}
+                        />
                       </TableCell>
                       <TableCell>
                         <Badge variant="outline" className={config.className}>
@@ -359,16 +362,6 @@ export function CustomerBehaviorTab() {
                             vs {formatCurrencyWithSymbol(customer.total_quoted_value, 'INR')}
                           </span>
                         </div>
-                      </TableCell>
-                      <TableCell className="text-right">
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => navigate(`/customers/${customer.customer_id}`)}
-                        >
-                          <ExternalLink className="h-4 w-4 mr-1" />
-                          View
-                        </Button>
                       </TableCell>
                     </TableRow>
                   );

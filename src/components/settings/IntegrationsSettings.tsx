@@ -25,7 +25,6 @@ import {
   CheckCircle, 
   XCircle, 
   Loader2,
-  MessageSquare,
   Globe,
   Phone,
   Mail,
@@ -33,10 +32,11 @@ import {
   Zap,
   Copy
 } from "lucide-react";
+import { WhatsAppIcon } from "@/components/icons/WhatsAppIcon";
 import { formatDistanceToNow } from "date-fns";
 import { toast } from "sonner";
 
-const WEBHOOK_URL = "https://iukquqmsrqnmuxpgessm.supabase.co/functions/v1/lead-webhook";
+const WEBHOOK_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/lead-webhook`;
 
 const integrationMeta: Record<IntegrationType, {
   name: string;
@@ -57,7 +57,7 @@ const integrationMeta: Record<IntegrationType, {
   whatsapp: {
     name: 'WhatsApp',
     description: 'Receive leads from WhatsApp messages',
-    icon: <MessageSquare className="h-6 w-6" />,
+    icon: <WhatsAppIcon className="h-6 w-6" />,
     color: 'bg-green-500',
     supportsSync: false,
     supportsMultiAccount: false,

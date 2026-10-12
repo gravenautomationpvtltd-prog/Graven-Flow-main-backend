@@ -101,6 +101,9 @@ export function useLeadDraftQuotation(leadId: string | undefined) {
   });
 }
 
+// In-flight mutex for draft creation
+const inFlightDraftCreations = new Map<string, Promise<any>>();
+
 // Create a new draft quotation (minimal record, no activity log)
 export function useCreateDraftQuotation() {
   const queryClient = useQueryClient();
@@ -116,43 +119,98 @@ export function useCreateDraftQuotation() {
       customerId?: string;
       data: DraftQuotationData;
     }) => {
-      // Validate product IDs before inserting
-      const validatedItems = await validateProductIds(data.items);
+      const dedupKey = `${leadId || customerId || 'standalone'}::${(data.grandTotal || 0).toFixed(2)}`;
+      const inFlight = inFlightDraftCreations.get(dedupKey);
+      if (inFlight) {
+        return await inFlight;
+      }
 
-      // Ensure fresh session before insert to prevent RLS failures during token refresh
-      await ensureFreshSession();
-      const tenantId = await requireTenantId();
-      const { data: newQuotation, error: quotationError } = await supabase
-        .from('quotations')
-        .insert({
-          quotation_number: `QT-TEMP-${Date.now()}`, // Will be replaced by trigger
-          lead_id: leadId || null,
-          customer_id: customerId || null,
-          created_by: user?.id || null,
-          subject: data.subject || null,
-          notes: data.notes || null,
-          terms_conditions: data.termsConditions || null,
-          subtotal: data.subtotal,
-          total_discount: data.totalDiscount,
-          total_tax: data.totalTax,
-          grand_total: data.grandTotal,
-          advance_percent: data.advancePercent ?? null,
-          advance_amount: data.advanceAmount ?? null,
-          balance_amount: data.balanceAmount ?? null,
-          payment_remark: data.paymentRemark ?? null,
-          advance_remark: data.advanceRemark ?? null,
-          balance_remark: data.balanceRemark ?? null,
+      const createPromise = (async () => {
+        // Validate product IDs before inserting
+        const validatedItems = await validateProductIds(data.items);
 
-          valid_until: data.validUntil || null,
-          status: 'draft', // Explicitly draft
-          currency: data.currency || 'INR',
-          exchange_rate: data.exchangeRate || 1,
-          tenant_id: tenantId,
-        } as any)
-        .select()
-        .single();
+        // Ensure fresh session before insert to prevent RLS failures during token refresh
+        await ensureFreshSession();
+        const tenantId = await requireTenantId();
+        // Check if an active draft already exists for this lead before creating a new one
+        let newQuotation: any = null;
+        if (leadId) {
+          const { data: existingDraft } = await supabase
+            .from('quotations')
+            .select('*')
+            .eq('lead_id', leadId)
+            .eq('status', 'draft')
+            .is('deleted_at', null)
+            .order('created_at', { ascending: false })
+            .limit(1)
+            .maybeSingle();
 
-      if (quotationError) throw quotationError;
+          if (existingDraft) {
+            console.log('[useCreateDraftQuotation] Reusing existing draft for lead:', existingDraft.quotation_number);
+            const { data: updatedQuotation, error: updateError } = await supabase
+              .from('quotations')
+              .update({
+                subject: data.subject || existingDraft.subject,
+                notes: data.notes || existingDraft.notes,
+                terms_conditions: data.termsConditions || existingDraft.terms_conditions,
+                subtotal: data.subtotal,
+                total_discount: data.totalDiscount,
+                total_tax: data.totalTax,
+                grand_total: data.grandTotal,
+                advance_percent: data.advancePercent ?? null,
+                advance_amount: data.advanceAmount ?? null,
+                balance_amount: data.balanceAmount ?? null,
+                payment_remark: data.paymentRemark ?? null,
+                advance_remark: data.advanceRemark ?? null,
+                balance_remark: data.balanceRemark ?? null,
+                valid_until: data.validUntil || existingDraft.valid_until,
+                currency: data.currency || existingDraft.currency || 'INR',
+                exchange_rate: data.exchangeRate || existingDraft.exchange_rate || 1,
+                updated_at: new Date().toISOString(),
+              } as any)
+              .eq('id', existingDraft.id)
+              .select()
+              .single();
+
+            if (updateError) throw updateError;
+            newQuotation = updatedQuotation;
+            await supabase.from('quotation_items').delete().eq('quotation_id', existingDraft.id);
+          }
+        }
+
+        if (!newQuotation) {
+          const { data: insertedQuotation, error: quotationError } = await supabase
+            .from('quotations')
+            .insert({
+              quotation_number: `QT-TEMP-${Date.now()}`, // Will be replaced by trigger
+              lead_id: leadId || null,
+              customer_id: customerId || null,
+              created_by: user?.id || null,
+              subject: data.subject || null,
+              notes: data.notes || null,
+              terms_conditions: data.termsConditions || null,
+              subtotal: data.subtotal,
+              total_discount: data.totalDiscount,
+              total_tax: data.totalTax,
+              grand_total: data.grandTotal,
+              advance_percent: data.advancePercent ?? null,
+              advance_amount: data.advanceAmount ?? null,
+              balance_amount: data.balanceAmount ?? null,
+              payment_remark: data.paymentRemark ?? null,
+              advance_remark: data.advanceRemark ?? null,
+              balance_remark: data.balanceRemark ?? null,
+              valid_until: data.validUntil || null,
+              status: 'draft', // Explicitly draft
+              currency: data.currency || 'INR',
+              exchange_rate: data.exchangeRate || 1,
+              tenant_id: tenantId,
+            } as any)
+            .select()
+            .single();
+
+          if (quotationError) throw quotationError;
+          newQuotation = insertedQuotation;
+        }
 
       // Create items with validated product IDs
       if (validatedItems.length > 0) {
@@ -182,7 +240,15 @@ export function useCreateDraftQuotation() {
         if (itemsError) throw itemsError;
       }
 
-      return newQuotation;
+        return newQuotation;
+      })();
+
+      inFlightDraftCreations.set(dedupKey, createPromise);
+      try {
+        return await createPromise;
+      } finally {
+        inFlightDraftCreations.delete(dedupKey);
+      }
     },
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ['quotations', data.lead_id] });

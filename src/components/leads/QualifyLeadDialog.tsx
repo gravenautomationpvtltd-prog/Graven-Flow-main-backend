@@ -17,6 +17,7 @@ import {
   type RoutingTarget,
   type QualifyItemInput,
 } from '@/hooks/useLeadQualification';
+import { useEnquiryItems } from '@/hooks/useEnquiryItems';
 import type { BoqItemCategory } from '@/hooks/useBoqs';
 import { CheckCircle2, Cog, XCircle, Plus, Trash2, ChevronDown, Settings2, Paperclip, X, Zap, Hourglass } from 'lucide-react';
 
@@ -66,6 +67,7 @@ const emptyRow = (): RowState => ({
 
 export function QualifyLeadDialog({ open, onOpenChange, leadId }: QualifyLeadDialogProps) {
   const { data: existing } = useLeadQualification(leadId);
+  const { data: existingItems } = useEnquiryItems(leadId);
   const qualify = useQualifyLead();
 
   const [type, setType] = useState<QualificationType>('simple');
@@ -91,10 +93,25 @@ export function QualifyLeadDialog({ open, onOpenChange, leadId }: QualifyLeadDia
         setTimeline('');
         setSiteContext('');
         setNotes('');
+      }
+
+      // Populate rows from existing enquiry items if available, otherwise default to empty row
+      if (existingItems && existingItems.length > 0) {
+        setRows(existingItems.map((ei) => ({
+          _key: ei.id,
+          product_id: ei.matched_product_id,
+          product_query_text: ei.product_query_text,
+          quantity: Number(ei.quantity) || 1,
+          brand: ei.brand || '',
+          notes: ei.notes || '',
+          hsn_code: ei.matched_product?.hsn_code || null,
+          _hsn: ei.matched_product?.hsn_code || null,
+        })));
+      } else {
         setRows([emptyRow()]);
       }
     }
-  }, [existing, open]);
+  }, [existing, existingItems, open]);
 
   const handleTypeChange = (val: QualificationType) => {
     setType(val);
@@ -152,7 +169,26 @@ export function QualifyLeadDialog({ open, onOpenChange, leadId }: QualifyLeadDia
       }
     }
 
-    const items: QualifyItemInput[] = cleanRows.map((r) => ({
+    // Consolidate duplicates before submitting to prevent duplicate line items
+    const consolidatedMap = new Map<string, RowState>();
+    for (const r of cleanRows) {
+      const key = r.product_id ? `p_${r.product_id}` : `t_${r.product_query_text.trim().toLowerCase()}`;
+      const prev = consolidatedMap.get(key);
+      if (prev) {
+        prev.quantity = (Number(prev.quantity) || 1) + (Number(r.quantity) || 1);
+        if (r.notes && !prev.notes?.includes(r.notes)) {
+          prev.notes = prev.notes ? `${prev.notes}\n${r.notes}` : r.notes;
+        }
+        if (r._files && r._files.length > 0) {
+          prev._files = [...(prev._files || []), ...r._files];
+        }
+      } else {
+        consolidatedMap.set(key, { ...r, quantity: Number(r.quantity) || 1 });
+      }
+    }
+    const deduplicatedRows = Array.from(consolidatedMap.values());
+
+    const items: QualifyItemInput[] = deduplicatedRows.map((r) => ({
       product_id: r.product_id,
       product_query_text: r.product_query_text,
       hsn_code: r._hsn || null,

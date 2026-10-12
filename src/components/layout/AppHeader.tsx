@@ -1,4 +1,4 @@
-import { Bell, Search, Plus, Menu, FileText, AlertTriangle, CheckCircle, Clock, DollarSign } from 'lucide-react';
+import { Bell, Search, Plus, Menu, FileText, AlertTriangle, CheckCircle, Clock, DollarSign, RefreshCw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { SidebarTrigger } from '@/components/ui/sidebar';
 import {
@@ -14,6 +14,8 @@ import { ThemeToggle } from '@/components/ui/theme-toggle';
 import { useState, useEffect } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
+import { useSyncStatus } from '@/hooks/useSyncStatus';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { useNavigate } from 'react-router-dom';
 import { CreateLeadDialog } from '@/components/leads/CreateLeadDialog';
 import { ReminderBell } from '@/components/reminders/ReminderBell';
@@ -52,6 +54,7 @@ const getNotificationIcon = (type: string | null) => {
 
 export function AppHeader() {
   const { user, isPureBIE } = useAuth();
+  const { state: syncState } = useSyncStatus();
   const navigate = useNavigate();
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
@@ -178,6 +181,50 @@ export function AppHeader() {
               <span className="hidden sm:inline">New Lead</span>
             </Button>
           )}
+
+          {/* Background Sync Status Indicator */}
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={() => navigate('/settings?tab=sync')}
+                  className="relative h-9 w-9 text-muted-foreground hover:text-foreground"
+                  aria-label="Background Data Sync Status"
+                >
+                  <RefreshCw
+                    className={`h-4 w-4 transition-transform ${
+                      syncState === 'syncing' ? 'animate-spin text-primary' : ''
+                    }`}
+                  />
+                  <span
+                    className={`absolute bottom-1.5 right-1.5 h-2 w-2 rounded-full ring-2 ring-background ${
+                      syncState === 'synced'
+                        ? 'bg-emerald-500'
+                        : syncState === 'offline'
+                        ? 'bg-amber-500'
+                        : syncState === 'syncing'
+                        ? 'bg-blue-500 animate-pulse'
+                        : 'bg-rose-500'
+                    }`}
+                  />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent side="bottom" className="text-xs">
+                <p className="font-semibold">
+                  {syncState === 'synced'
+                    ? 'Sync: 🟢 Active & Up To Date'
+                    : syncState === 'offline'
+                    ? 'Sync: 🟠 Source Offline — Standalone Mode'
+                    : syncState === 'syncing'
+                    ? 'Sync: 🔵 Synchronizing...'
+                    : 'Sync: 🔴 Notice'}
+                </p>
+                <p className="text-[10px] text-muted-foreground">Click to view sync details & audit logs</p>
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
 
           {/* Theme Toggle */}
           <ThemeToggle />

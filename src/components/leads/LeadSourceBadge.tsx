@@ -1,6 +1,7 @@
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
 import type { Database } from '@/integrations/supabase/types';
+import { WhatsAppIcon } from '@/components/icons/WhatsAppIcon';
 
 type LeadSource = Database['public']['Enums']['lead_source'];
 
@@ -25,7 +26,8 @@ export function LeadSourceBadge({ source, className }: LeadSourceBadgeProps) {
   const config = sourceConfig[source];
   
   return (
-    <Badge variant="outline" className={cn(config.className, 'border-0', className)}>
+    <Badge variant="outline" className={cn(config.className, 'border-0 inline-flex items-center gap-1', className)}>
+      {source === 'whatsapp' && <WhatsAppIcon className="h-3 w-3" />}
       {config.label}
     </Badge>
   );

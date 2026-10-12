@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { Button } from '@/components/ui/button';
-import { Plus, Upload, Download, Loader2, Target, MessageCircle, Mail, X, Sparkles } from 'lucide-react';
+import { Plus, Upload, Download, Loader2, Target, Mail, X, Sparkles } from 'lucide-react';
+import { WhatsAppIcon } from '@/components/icons/WhatsAppIcon';
 import { useCustomers, fetchAllCustomers } from '@/hooks/useCustomers';
 import { CustomerFilters } from '@/components/customers/CustomerFilters';
 import { CustomerListTable } from '@/components/customers/CustomerListTable';
@@ -10,6 +10,7 @@ import { EditCustomerDialog } from '@/components/customers/EditCustomerDialog';
 import { DeleteCustomerDialog } from '@/components/customers/DeleteCustomerDialog';
 import { ImportCustomersDialog } from '@/components/customers/ImportCustomersDialog';
 import { BulkOutreachDialog } from '@/components/customers/BulkOutreachDialog';
+import { Button } from '@/components/ui/button';
 import { BulkActionBar } from '@/components/ui/bulk-action-bar';
 import { exportCustomersToCSV, exportCustomersForGoogleAds, downloadCSV } from '@/lib/csv-utils';
 import {
@@ -258,7 +259,7 @@ export default function Customers() {
     {
       id: 'whatsapp',
       label: 'WhatsApp',
-      icon: <MessageCircle className="h-4 w-4" />,
+      icon: <WhatsAppIcon className="h-4 w-4 text-green-600" />,
       onClick: handleBulkWhatsApp,
     },
     {

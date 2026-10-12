@@ -1,7 +1,8 @@
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from '@/components/ui/sheet';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
-import { Loader2, Phone, MessageCircle, Mail, CalendarClock, User, StickyNote, Sparkles } from 'lucide-react';
+import { Loader2, Phone, Mail, CalendarClock, User, StickyNote, Sparkles } from 'lucide-react';
+import { WhatsAppIcon } from '@/components/icons/WhatsAppIcon';
 import { useCstEngagements } from '@/hooks/useCstEngagements';
 import { formatDistanceToNow, format } from 'date-fns';
 import type { CstCustomer } from '@/hooks/useCstCustomers';
@@ -13,7 +14,7 @@ interface Props {
 }
 
 const channelIcon: Record<string, any> = {
-  call: Phone, whatsapp: MessageCircle, email: Mail,
+  call: Phone, whatsapp: WhatsAppIcon, email: Mail,
   meeting: User, note: StickyNote, system: Sparkles,
 };
 

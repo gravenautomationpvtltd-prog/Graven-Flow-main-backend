@@ -59,10 +59,9 @@ export function useChatChannels() {
 
   return useQuery({
     queryKey: ['chat-channels', user?.id, isAdmin],
+    staleTime: 30 * 1000,
     queryFn: async () => {
       if (!user) return [];
-
-      const channels: ChannelWithDetails[] = [];
 
       // CEO/COO (super_admin, coo) see ALL channels
       if (isAdmin) {
@@ -72,36 +71,42 @@ export function useChatChannels() {
           .order('created_at', { ascending: false });
 
         if (channelsError) throw channelsError;
+        if (!allChannels || allChannels.length === 0) return [];
 
-        for (const channel of allChannels || []) {
-          // Get members for this channel
-          const { data: members } = await supabase
-            .from('chat_members')
-            .select(`
-              *,
-              profile:profiles(id, full_name, avatar_url, email)
-            `)
-            .eq('channel_id', channel.id);
+        const channelDetailsPromises = allChannels.map(async (channel) => {
+          const [{ data: members }, { data: lastMessages }] = await Promise.all([
+            supabase
+              .from('chat_members')
+              .select(`
+                *,
+                profile:profiles(id, full_name, avatar_url, email)
+              `)
+              .eq('channel_id', channel.id),
+            supabase
+              .from('chat_messages')
+              .select(`
+                *,
+                sender:profiles(id, full_name, avatar_url)
+              `)
+              .eq('channel_id', channel.id)
+              .order('created_at', { ascending: false })
+              .limit(1)
+          ]);
 
-          // Get last message
-          const { data: lastMessages } = await supabase
-            .from('chat_messages')
-            .select(`
-              *,
-              sender:profiles(id, full_name, avatar_url)
-            `)
-            .eq('channel_id', channel.id)
-            .order('created_at', { ascending: false })
-            .limit(1);
-
-          // For admin viewing other channels, unread count is 0 (they're not members)
-          channels.push({
+          return {
             ...channel,
             members: (members || []) as ChatMember[],
             unread_count: 0,
             last_message: lastMessages?.[0] as ChatMessage | undefined,
-          });
-        }
+          };
+        });
+
+        const channels = await Promise.all(channelDetailsPromises);
+        return channels.sort((a, b) => {
+          const aTime = a.last_message?.created_at || a.created_at;
+          const bTime = b.last_message?.created_at || b.created_at;
+          return new Date(bTime).getTime() - new Date(aTime).getTime();
+        });
       } else {
         // Regular users - get channels they are members of
         const { data: memberChannels, error: memberError } = await supabase
@@ -115,53 +120,50 @@ export function useChatChannels() {
           .eq('user_id', user.id);
 
         if (memberError) throw memberError;
+        if (!memberChannels || memberChannels.length === 0) return [];
 
-        for (const mc of memberChannels || []) {
+        const validMCs = memberChannels.filter(mc => mc.channel);
+        const channelDetailsPromises = validMCs.map(async (mc) => {
           const channel = mc.channel as unknown as ChatChannel;
-          if (!channel) continue;
+          const [{ data: members }, { data: lastMessages }, { count: unreadCount }] = await Promise.all([
+            supabase
+              .from('chat_members')
+              .select(`
+                *,
+                profile:profiles(id, full_name, avatar_url, email)
+              `)
+              .eq('channel_id', channel.id),
+            supabase
+              .from('chat_messages')
+              .select(`
+                *,
+                sender:profiles(id, full_name, avatar_url)
+              `)
+              .eq('channel_id', channel.id)
+              .order('created_at', { ascending: false })
+              .limit(1),
+            supabase
+              .from('chat_messages')
+              .select('*', { count: 'exact', head: true })
+              .eq('channel_id', channel.id)
+              .gt('created_at', mc.last_read_at || '1970-01-01T00:00:00Z')
+          ]);
 
-          // Get members for this channel
-          const { data: members } = await supabase
-            .from('chat_members')
-            .select(`
-              *,
-              profile:profiles(id, full_name, avatar_url, email)
-            `)
-            .eq('channel_id', channel.id);
-
-          // Get last message
-          const { data: lastMessages } = await supabase
-            .from('chat_messages')
-            .select(`
-              *,
-              sender:profiles(id, full_name, avatar_url)
-            `)
-            .eq('channel_id', channel.id)
-            .order('created_at', { ascending: false })
-            .limit(1);
-
-          // Count unread messages
-          const { count: unreadCount } = await supabase
-            .from('chat_messages')
-            .select('*', { count: 'exact', head: true })
-            .eq('channel_id', channel.id)
-            .gt('created_at', mc.last_read_at);
-
-          channels.push({
+          return {
             ...channel,
             members: (members || []) as ChatMember[],
             unread_count: unreadCount || 0,
             last_message: lastMessages?.[0] as ChatMessage | undefined,
-          });
-        }
-      }
+          };
+        });
 
-      // Sort by last message time
-      return channels.sort((a, b) => {
-        const aTime = a.last_message?.created_at || a.created_at;
-        const bTime = b.last_message?.created_at || b.created_at;
-        return new Date(bTime).getTime() - new Date(aTime).getTime();
-      });
+        const channels = await Promise.all(channelDetailsPromises);
+        return channels.sort((a, b) => {
+          const aTime = a.last_message?.created_at || a.created_at;
+          const bTime = b.last_message?.created_at || b.created_at;
+          return new Date(bTime).getTime() - new Date(aTime).getTime();
+        });
+      }
     },
     enabled: !!user,
   });
@@ -449,6 +451,7 @@ export function useMarkAsRead() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['chat-channels'] });
+      queryClient.invalidateQueries({ queryKey: ['chat-unread-badge-count'] });
     },
   });
 }
@@ -496,11 +499,41 @@ export function useDeleteChannel() {
   });
 }
 
-// Get total unread count for badge
-export function useUnreadCount() {
-  const { data: channels } = useChatChannels();
-  
-  const total = channels?.reduce((sum, channel) => sum + channel.unread_count, 0) || 0;
+// Get total unread count for sidebar badge efficiently (never triggers heavy channels fetch)
+export function useUnreadCount(): number {
+  const { user } = useAuth();
+
+  const { data: total = 0 } = useQuery({
+    queryKey: ['chat-unread-badge-count', user?.id],
+    enabled: !!user,
+    staleTime: 60 * 1000,
+    refetchOnWindowFocus: false,
+    queryFn: async (): Promise<number> => {
+      if (!user) return 0;
+
+      // 1. Get channels user is a member of with their last_read_at
+      const { data: memberChannels, error } = await supabase
+        .from('chat_members')
+        .select('channel_id, last_read_at')
+        .eq('user_id', user.id);
+
+      if (error || !memberChannels || memberChannels.length === 0) return 0;
+
+      // 2. Count unread messages across these channels concurrently
+      const unreadPromises = memberChannels.map((mc) =>
+        supabase
+          .from('chat_messages')
+          .select('id', { count: 'exact', head: true })
+          .eq('channel_id', mc.channel_id)
+          .neq('sender_id', user.id)
+          .gt('created_at', mc.last_read_at || '1970-01-01T00:00:00Z')
+      );
+
+      const results = await Promise.all(unreadPromises);
+      return results.reduce((sum, res) => sum + (res.count || 0), 0);
+    },
+  });
+
   return total;
 }
 

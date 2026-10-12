@@ -2,6 +2,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { logActivity } from '@/lib/activity-logger';
+import { createPurchaseOrderIdempotent } from '@/lib/po-idempotency';
 
 /** Read the active vertical id from the same storage key VerticalContext writes. */
 function getActiveVerticalId(): string | null {
@@ -35,6 +36,7 @@ export interface PurchaseOrder {
   po_number: string;
   supplier_id: string | null;
   lead_id: string | null;
+  sales_order_id?: string | null;
   quotation_id: string | null;
   status: string;
   order_date: string | null;
@@ -80,11 +82,12 @@ export interface PurchaseOrder {
   approver?: { id: string; full_name: string } | null;
   rejector?: { id: string; full_name: string } | null;
   review_requester?: { id: string; full_name: string } | null;
+  idempotency_key?: string | null;
 }
 
 type POItemInsert = Omit<PurchaseOrderItem, 'id' | 'created_at' | 'po_id'>;
 
-interface CreatePOData {
+export interface CreatePOData {
   supplier_id: string | null;
   sales_order_id?: string | null;
   lead_id?: string | null;
@@ -95,6 +98,8 @@ interface CreatePOData {
   terms_conditions?: string | null;
   currency?: string | null;
   exchange_rate?: number | null;
+  vertical_id?: string | null;
+  idempotency_key?: string | null;
   items: POItemInsert[];
 }
 
@@ -153,70 +158,7 @@ export function useCreatePurchaseOrder() {
     mutationFn: async (poData: CreatePOData) => {
       const { data: userData } = await supabase.auth.getUser();
       const userId = userData.user?.id;
-
-      const { items, ...poFields } = poData;
-
-      // Calculate totals
-      let subtotal = 0;
-      let totalTax = 0;
-      items.forEach(item => {
-        const itemAmount = item.quantity * item.rate;
-        const taxAmount = (itemAmount * (item.tax_percent || 0)) / 100;
-        subtotal += itemAmount;
-        totalTax += taxAmount;
-      });
-
-      const { data: po, error: poError } = await supabase
-        .from('purchase_orders')
-        .insert({
-          ...poFields,
-          po_number: '',
-          created_by: userId,
-          subtotal,
-          total_tax: totalTax,
-          grand_total: subtotal + totalTax,
-          vertical_id: getActiveVerticalId(),
-        } as any)
-        .select()
-        .single();
-
-      if (poError) throw poError;
-
-      // Insert line items
-      const itemsWithPoId = items.map((item, index) => {
-        const itemAmount = item.quantity * item.rate;
-        const taxAmount = (itemAmount * (item.tax_percent || 0)) / 100;
-        return {
-          po_id: po.id,
-          product_id: item.product_id,
-          description: item.description,
-          hsn_code: item.hsn_code,
-          quantity: item.quantity,
-          rate: item.rate,
-          tax_percent: item.tax_percent || 18,
-          tax_amount: taxAmount,
-          amount: itemAmount + taxAmount,
-          received_quantity: 0,
-          sort_order: index,
-        };
-      });
-
-      const { error: itemsError } = await supabase
-        .from('purchase_order_items')
-        .insert(itemsWithPoId);
-
-      if (itemsError) throw itemsError;
-
-      // Auto-update sales order status to 'in_procurement' if linked
-      if (poFields.sales_order_id) {
-        await supabase
-          .from('sales_orders')
-          .update({ status: 'in_procurement' })
-          .eq('id', poFields.sales_order_id)
-          .in('status', ['ready_for_procurement', 'pending_documents']);
-      }
-
-      return po;
+      return createPurchaseOrderIdempotent(poData, userId);
     },
     onSuccess: (data, variables) => {
       queryClient.invalidateQueries({ queryKey: ['purchase-orders'] });
@@ -685,61 +627,16 @@ export function useCreatePOFromQuotation() {
     mutationFn: async ({ quotationId, rfqId, poData }: CreatePOFromQuotationData) => {
       const { data: userData } = await supabase.auth.getUser();
       const userId = userData.user?.id;
+      const effectiveKey = poData.idempotency_key || `award_${quotationId}`;
 
-      const { items, ...poFields } = poData;
-
-      // Calculate totals
-      let subtotal = 0;
-      let totalTax = 0;
-      items.forEach(item => {
-        const itemAmount = item.quantity * item.rate;
-        const taxAmount = (itemAmount * (item.tax_percent || 0)) / 100;
-        subtotal += itemAmount;
-        totalTax += taxAmount;
-      });
-
-      // 1. Create the PO
-      const { data: po, error: poError } = await supabase
-        .from('purchase_orders')
-        .insert({
-          ...poFields,
-          po_number: '',
-          created_by: userId,
-          subtotal,
-          total_tax: totalTax,
-          grand_total: subtotal + totalTax,
+      const po = await createPurchaseOrderIdempotent(
+        {
+          ...poData,
           supplier_quotation_id: quotationId,
-          vertical_id: getActiveVerticalId(),
-        } as any)
-        .select()
-        .single();
-
-      if (poError) throw poError;
-
-      // 2. Insert line items
-      const itemsWithPoId = items.map((item, index) => {
-        const itemAmount = item.quantity * item.rate;
-        const taxAmount = (itemAmount * (item.tax_percent || 0)) / 100;
-        return {
-          po_id: po.id,
-          product_id: item.product_id,
-          description: item.description,
-          hsn_code: item.hsn_code,
-          quantity: item.quantity,
-          rate: item.rate,
-          tax_percent: item.tax_percent || 18,
-          tax_amount: taxAmount,
-          amount: itemAmount + taxAmount,
-          received_quantity: 0,
-          sort_order: index,
-        };
-      });
-
-      const { error: itemsError } = await supabase
-        .from('purchase_order_items')
-        .insert(itemsWithPoId);
-
-      if (itemsError) throw itemsError;
+          idempotency_key: effectiveKey,
+        },
+        userId
+      );
 
       // 3. Update awarded quotation status to 'accepted'
       await supabase

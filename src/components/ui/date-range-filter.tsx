@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { format, startOfMonth, endOfMonth, subDays, subMonths, startOfYear, endOfYear } from 'date-fns';
+import { format, startOfMonth, endOfMonth, subDays, subMonths, startOfYear, endOfYear, startOfDay, endOfDay } from 'date-fns';
 import { CalendarIcon, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
@@ -60,13 +60,13 @@ export function getDateRangeFromPreset(preset: DatePreset, customFrom?: Date, cu
       };
     case 'last_30_days':
       return {
-        from: subDays(today, 30),
-        to: today,
+        from: startOfDay(subDays(today, 30)),
+        to: endOfDay(today),
       };
     case 'last_90_days':
       return {
-        from: subDays(today, 90),
-        to: today,
+        from: startOfDay(subDays(today, 90)),
+        to: endOfDay(today),
       };
     case 'this_year':
       return {
@@ -81,8 +81,8 @@ export function getDateRangeFromPreset(preset: DatePreset, customFrom?: Date, cu
       };
     case 'custom':
       return {
-        from: customFrom,
-        to: customTo,
+        from: customFrom ? startOfDay(customFrom) : undefined,
+        to: customTo ? endOfDay(customTo) : undefined,
       };
     case 'all_time':
     default:

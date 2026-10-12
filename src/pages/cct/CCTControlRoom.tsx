@@ -182,10 +182,14 @@ function OrderDecideDialog({
                   <div className="flex justify-between"><span className="text-muted-foreground">Order Value</span><span className="font-medium">{fmtINR(orderValue)}</span></div>
                   <div className="flex justify-between"><span className="text-muted-foreground">Received</span><span className="text-green-600 font-medium">{fmtINR(received)}</span></div>
                   <div className="flex justify-between"><span className="text-muted-foreground">Pending</span><span className="text-amber-600 font-medium">{fmtINR(pending)}</span></div>
-                  {customerPO && (
-                    <a href={customerPO.file_url} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-primary hover:underline pt-1 text-xs">
-                      <FileText className="h-3 w-3" /> {customerPO.file_name} <ExternalLink className="h-3 w-3" />
-                    </a>
+                  {(detail?.documents || []).length > 0 && (
+                    <div className="pt-1 flex flex-col gap-1 border-t mt-1">
+                      {(detail?.documents || []).map((doc: any) => (
+                        <a key={doc.id} href={doc.file_url} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-primary hover:underline text-xs">
+                          <FileText className="h-3 w-3" /> {doc.file_name} <ExternalLink className="h-3 w-3" />
+                        </a>
+                      ))}
+                    </div>
                   )}
                 </CardContent>
               </Card>
