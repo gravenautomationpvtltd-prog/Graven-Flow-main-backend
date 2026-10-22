@@ -48,18 +48,17 @@ BEGIN
     RETURN jsonb_build_object('success', false, 'error', 'Authentication required');
   END IF;
 
-  -- Verify caller has super_admin or coo role
-  SELECT EXISTS (
+  -- Verify caller has super_admin, coo, or tenant owner/admin role
+  SELECT (EXISTS (
     SELECT 1 FROM public.user_roles 
     WHERE user_id = v_caller_id AND role IN ('super_admin', 'coo')
-  ) INTO v_is_admin;
-
-  IF NOT v_is_admin THEN
-    SELECT EXISTS (
-      SELECT 1 FROM public.profiles 
-      WHERE id = v_caller_id AND role IN ('super_admin', 'coo')
-    ) INTO v_is_admin;
-  END IF;
+  ) OR EXISTS (
+    SELECT 1 FROM public.tenant_users
+    WHERE user_id = v_caller_id AND is_active = true AND role IN ('owner', 'admin')
+  ) OR EXISTS (
+    SELECT 1 FROM public.profiles
+    WHERE id = v_caller_id AND is_protected_owner = true
+  )) INTO v_is_admin;
 
   IF NOT v_is_admin THEN
     RETURN jsonb_build_object('success', false, 'error', 'Permission denied: Only super admins and COOs can create users');
@@ -72,7 +71,14 @@ BEGIN
   LIMIT 1;
 
   IF v_tenant_id IS NULL THEN
-    RETURN jsonb_build_object('success', false, 'error', 'Organization tenant could not be determined for caller');
+    SELECT tenant_id INTO v_tenant_id
+    FROM public.profiles
+    WHERE id = v_caller_id
+    LIMIT 1;
+  END IF;
+
+  IF v_tenant_id IS NULL THEN
+    v_tenant_id := '1a5184ef-5138-4327-8928-67bc4f229131'::uuid;
   END IF;
 
   -- 4. Office Validation: Ensure office belongs to valid registered offices if provided

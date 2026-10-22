@@ -80,62 +80,30 @@ export function useCreateUser() {
       email: string; 
       password: string; 
       fullName: string; 
-      role: AppRole;
-      officeId?: string;
+      role: AppRole; 
+      officeId?: string; 
     }) => {
-      // 1. Try direct database RPC (works in all environments, resilient to edge function gateway limits)
-      try {
-        const { data: rpcData, error: rpcError } = await (supabase.rpc as any)('admin_create_user', {
-          p_email: email,
-          p_password: password,
-          p_full_name: fullName,
-          p_role: role,
-          p_office_id: officeId || null,
-        });
+      const { data: rpcData, error: rpcError } = await (supabase.rpc as any)('admin_create_user', {
+        p_email: email.trim().toLowerCase(),
+        p_password: password,
+        p_full_name: fullName.trim(),
+        p_role: role,
+        p_office_id: officeId || null,
+      });
 
-        if (!rpcError && rpcData?.success) {
-          return rpcData.user;
-        }
-
-        if (rpcData && !rpcData.success) {
-          throw new Error(rpcData.error || 'Failed to create user');
-        }
-
-        if (rpcError && !rpcError.message?.includes('function public.admin_create_user') && !rpcError.message?.includes('404')) {
-          throw new Error(rpcError.message);
-        }
-      } catch (err: any) {
-        if (!err.message?.includes('404') && !err.message?.includes('function public.admin_create_user')) {
-          throw err;
-        }
+      if (rpcError) {
+        throw new Error(rpcError.message || 'Failed to execute user creation request');
       }
 
-      // 2. Fallback to Edge function if available
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session) {
-        throw new Error('You must be logged in to create users');
+      if (!rpcData) {
+        throw new Error('No response received from user creation service');
       }
 
-      const response = await fetch(
-        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/admin-create-user`,
-        {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${session.access_token}`,
-            'apikey': import.meta.env.VITE_SUPABASE_ANON_KEY || '',
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({ email, password, fullName, role, officeId }),
-        }
-      );
-
-      const result = await response.json();
-
-      if (!response.ok) {
-        throw new Error(result.error || 'Failed to create user');
+      if (!rpcData.success) {
+        throw new Error(rpcData.error || 'Failed to create user');
       }
 
-      return result.user;
+      return rpcData.user;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['users-with-roles'] });
