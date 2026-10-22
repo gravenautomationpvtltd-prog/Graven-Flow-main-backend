@@ -120,7 +120,7 @@ export function useSptInbox(tab: SptInboxTab | 'all') {
       if (timer) clearTimeout(timer);
       timer = setTimeout(() => {
         qc.invalidateQueries({ queryKey: ['spt-inbox'] });
-      }, 2_000);
+      }, 150);
     };
 
     const channel = supabase
@@ -142,7 +142,8 @@ export function useSptInbox(tab: SptInboxTab | 'all') {
   return useQuery({
     queryKey: ['spt-inbox', tab, user?.id, isAdmin],
     enabled: !!user?.id,
-    staleTime: 30_000,
+    staleTime: 10_000,
+    refetchOnWindowFocus: true,
     queryFn: async (): Promise<SptInboxLead[]> => {
       if (!user?.id) return [];
 

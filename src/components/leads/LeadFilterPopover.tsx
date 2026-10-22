@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { Filter, ChevronDown } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -11,43 +11,116 @@ import {
 } from '@/components/ui/popover';
 import { cn } from '@/lib/utils';
 
-interface FilterSection {
+export interface FilterSection {
   title: string;
   options: { value: string; label: string }[];
   selectedValues: string[];
-  onChange: (values: string[]) => void;
+  onChange?: (values: string[]) => void;
+  singleSelect?: boolean;
 }
 
-interface LeadFilterPopoverProps {
+export interface LeadFilterPopoverProps {
   label: string;
   sections: FilterSection[];
+  onApplySections?: (appliedValues: Record<string, string[]>) => void;
+  onClearAll?: () => void;
   className?: string;
 }
 
-export function LeadFilterPopover({ label, sections, className }: LeadFilterPopoverProps) {
+export function LeadFilterPopover({
+  label,
+  sections,
+  onApplySections,
+  onClearAll,
+  className,
+}: LeadFilterPopoverProps) {
   const [open, setOpen] = useState(false);
 
-  // Calculate total active filters
+  // Helper to snapshot current selected values from props
+  const getCommittedValues = useCallback((): Record<string, string[]> => {
+    const values: Record<string, string[]> = {};
+    sections.forEach((s) => {
+      values[s.title] = [...s.selectedValues];
+    });
+    return values;
+  }, [sections]);
+
+  // Draft values state used while the popover is open
+  const [draftValues, setDraftValues] = useState<Record<string, string[]>>(getCommittedValues);
+
+  // Sync draft whenever popover opens
+  const handleOpenChange = (newOpen: boolean) => {
+    if (newOpen) {
+      setDraftValues(getCommittedValues());
+    }
+    setOpen(newOpen);
+  };
+
+  // If props change while closed, keep draft in sync
+  useEffect(() => {
+    if (!open) {
+      setDraftValues(getCommittedValues());
+    }
+  }, [open, getCommittedValues]);
+
+  // Total active filters committed
   const activeCount = sections.reduce((acc, section) => acc + section.selectedValues.length, 0);
 
-  const handleCheckboxChange = (section: FilterSection, value: string, checked: boolean) => {
-    if (checked) {
-      section.onChange([...section.selectedValues, value]);
+  // Total draft filters selected in popover
+  const draftCount = Object.values(draftValues).reduce(
+    (acc, vals) => acc + (vals?.length || 0),
+    0
+  );
+
+  const handleToggleOption = (section: FilterSection, value: string) => {
+    const current = draftValues[section.title] ?? section.selectedValues ?? [];
+    let next: string[];
+
+    if (section.singleSelect) {
+      // Mutually exclusive toggle: uncheck if already selected, otherwise select only this option
+      next = current.includes(value) ? [] : [value];
     } else {
-      section.onChange(section.selectedValues.filter(v => v !== value));
+      next = current.includes(value)
+        ? current.filter((v) => v !== value)
+        : [...current, value];
     }
+
+    setDraftValues((prev) => ({
+      ...prev,
+      [section.title]: next,
+    }));
   };
 
   const handleClearAll = () => {
-    sections.forEach(section => section.onChange([]));
+    const cleared: Record<string, string[]> = {};
+    sections.forEach((s) => {
+      cleared[s.title] = [];
+    });
+    setDraftValues(cleared);
+
+    if (onClearAll) {
+      onClearAll();
+    } else if (onApplySections) {
+      onApplySections(cleared);
+    } else {
+      sections.forEach((s) => s.onChange?.([]));
+    }
   };
 
   const handleApply = () => {
+    if (onApplySections) {
+      onApplySections(draftValues);
+    } else {
+      sections.forEach((s) => {
+        const vals = draftValues[s.title] ?? s.selectedValues;
+        s.onChange?.(vals);
+      });
+    }
     setOpen(false);
   };
 
   return (
-    <Popover open={open} onOpenChange={setOpen}>
+    <Popover open={open} onOpenChange={handleOpenChange}>
       <PopoverTrigger asChild>
         <Button
           variant="outline"
@@ -69,35 +142,40 @@ export function LeadFilterPopover({ label, sections, className }: LeadFilterPopo
       </PopoverTrigger>
       <PopoverContent className="w-80 p-0" align="start">
         <div className="max-h-[400px] overflow-y-auto">
-          {sections.map((section, sectionIndex) => (
-            <div key={section.title}>
-              {sectionIndex > 0 && <Separator />}
-              <div className="p-3">
-                <h4 className="font-medium text-xs uppercase tracking-wider text-muted-foreground mb-3">
-                  {section.title}
-                </h4>
-                <div className="grid grid-cols-2 gap-2">
-                  {section.options.map((option) => (
-                    <div key={option.value} className="flex items-center space-x-2">
-                      <Checkbox
-                        id={`${section.title}-${option.value}`}
-                        checked={section.selectedValues.includes(option.value)}
-                        onCheckedChange={(checked) => 
-                          handleCheckboxChange(section, option.value, checked as boolean)
-                        }
-                      />
-                      <Label
-                        htmlFor={`${section.title}-${option.value}`}
-                        className="text-sm font-normal cursor-pointer truncate"
-                      >
-                        {option.label}
-                      </Label>
-                    </div>
-                  ))}
+          {sections.map((section, sectionIndex) => {
+            const currentSelected = draftValues[section.title] ?? section.selectedValues ?? [];
+            return (
+              <div key={section.title}>
+                {sectionIndex > 0 && <Separator />}
+                <div className="p-3">
+                  <h4 className="font-medium text-xs uppercase tracking-wider text-muted-foreground mb-3">
+                    {section.title}
+                  </h4>
+                  <div className="grid grid-cols-2 gap-2">
+                    {section.options.map((option) => {
+                      const isChecked = currentSelected.includes(option.value);
+                      return (
+                        <div key={option.value} className="flex items-center space-x-2">
+                          <Checkbox
+                            id={`${section.title}-${option.value}`}
+                            checked={isChecked}
+                            onCheckedChange={() => handleToggleOption(section, option.value)}
+                            className="rounded-full"
+                          />
+                          <Label
+                            htmlFor={`${section.title}-${option.value}`}
+                            className="text-sm font-normal cursor-pointer truncate"
+                          >
+                            {option.label}
+                          </Label>
+                        </div>
+                      );
+                    })}
+                  </div>
                 </div>
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
         <Separator />
         <div className="p-3 flex justify-between gap-2">
@@ -105,7 +183,7 @@ export function LeadFilterPopover({ label, sections, className }: LeadFilterPopo
             variant="ghost"
             size="sm"
             onClick={handleClearAll}
-            disabled={activeCount === 0}
+            disabled={draftCount === 0 && activeCount === 0}
           >
             Clear All
           </Button>

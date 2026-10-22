@@ -27,10 +27,18 @@ interface InventoryTableProps {
 }
 
 export function InventoryTable({ inventory, isLoading, onAdjust, onDelete, searchQuery = '' }: InventoryTableProps) {
-  const filteredInventory = inventory.filter(item =>
-    item.product?.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    item.product?.hsn_code?.toLowerCase().includes(searchQuery.toLowerCase())
-  );
+  const q = searchQuery.toLowerCase().trim();
+  const filteredInventory = inventory.filter(item => {
+    if (!q) return true;
+    return (
+      item.product?.name?.toLowerCase().includes(q) ||
+      item.product?.hsn_code?.toLowerCase().includes(q) ||
+      item.product?.model_number?.toLowerCase().includes(q) ||
+      item.product?.brand?.toLowerCase().includes(q) ||
+      item.product?.category?.toLowerCase().includes(q) ||
+      item.office?.name?.toLowerCase().includes(q)
+    );
+  });
 
   const getStockStatus = (item: InventoryItem) => {
     if (item.quantity <= 0) return { label: 'Out of Stock', color: 'bg-red-100 text-red-800' };

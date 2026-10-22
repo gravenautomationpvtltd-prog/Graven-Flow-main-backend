@@ -39,8 +39,8 @@ export function useSalesStats(dateRange: DateRange, enabled: boolean, assignedTo
   return useQuery({
     queryKey: ['dashboard-sales-stats', activeVerticalId, assignedTo ?? null, dateRange.from?.toISOString(), dateRange.to?.toISOString()],
     enabled,
-    staleTime: 60_000,
-    refetchOnWindowFocus: false,
+    staleTime: 10_000,
+    refetchOnWindowFocus: true,
     refetchOnMount: true,
     queryFn: async (): Promise<DashboardStats> => {
       // 1. High-speed single-roundtrip RPC (bypasses slow row-by-row RLS scans, returns in <500ms)
@@ -157,39 +157,37 @@ export function useProcurementStats(dateRange: DateRange, enabled: boolean) {
     refetchOnWindowFocus: false,
     refetchOnMount: false,
     queryFn: async (): Promise<ProcurementStats> => {
-      let draftPOsQuery: any = supabase.from('purchase_orders').select('id', { count: 'exact' }).limit(1).eq('status', 'draft');
-      let pendingPOsQuery: any = supabase.from('purchase_orders').select('id', { count: 'exact' }).limit(1).in('status', ['pending_verification', 'pending_authorization', 'pending_approval']);
+      // Consolidated PO status query (draft + pending statuses in a single roundtrip)
+      let poQuery: any = supabase
+        .from('purchase_orders')
+        .select('status')
+        .in('status', ['draft', 'pending_verification', 'pending_authorization', 'pending_approval'])
+        .limit(500);
 
-      if (activeVerticalId) {
-        draftPOsQuery = draftPOsQuery.eq('vertical_id', activeVerticalId);
-        pendingPOsQuery = pendingPOsQuery.eq('vertical_id', activeVerticalId);
-      }
-      if (dateRange.from) {
-        draftPOsQuery = draftPOsQuery.gte('created_at', dateRange.from.toISOString());
-        pendingPOsQuery = pendingPOsQuery.gte('created_at', dateRange.from.toISOString());
-      }
-      if (dateRange.to) {
-        draftPOsQuery = draftPOsQuery.lte('created_at', dateRange.to.toISOString());
-        pendingPOsQuery = pendingPOsQuery.lte('created_at', dateRange.to.toISOString());
-      }
+      if (activeVerticalId) poQuery = poQuery.eq('vertical_id', activeVerticalId);
+      if (dateRange.from) poQuery = poQuery.gte('created_at', dateRange.from.toISOString());
+      if (dateRange.to) poQuery = poQuery.lte('created_at', dateRange.to.toISOString());
 
       const [
-        { count: draftPOs },
-        { count: pendingPOs },
+        { data: poData },
         { count: totalSuppliers },
         { count: totalInventoryItems },
         { data: inventoryData },
       ] = await Promise.all([
-        draftPOsQuery,
-        pendingPOsQuery,
+        poQuery,
         supabase.from('suppliers').select('id', { count: 'exact' }).limit(1).eq('is_active', true),
         supabase.from('inventory').select('id', { count: 'exact' }).limit(1),
-        supabase.from('inventory').select('quantity, min_stock_level').limit(500),
+        // Only fetch items where a min_stock_level threshold is defined
+        supabase.from('inventory').select('quantity, min_stock_level').not('min_stock_level', 'is', null).gt('min_stock_level', 0).limit(250),
       ]);
 
+      const poRows = poData || [];
+      const draftPOs = poRows.filter((r: any) => r.status === 'draft').length;
+      const pendingPOs = poRows.filter((r: any) => r.status !== 'draft').length;
+
       return {
-        draftPOs: draftPOs || 0,
-        pendingPOs: pendingPOs || 0,
+        draftPOs,
+        pendingPOs,
         lowStockAlerts: inventoryData?.filter(item => item.quantity <= (item.min_stock_level || 0)).length || 0,
         totalSuppliers: totalSuppliers || 0,
         totalInventoryItems: totalInventoryItems || 0,
@@ -207,86 +205,80 @@ export function usePendingApprovals(enabled: boolean) {
     refetchOnWindowFocus: false,
     refetchOnMount: false,
     queryFn: async (): Promise<PendingApprovals> => {
-      const buildQ = (status: string) => {
-        let q: any = supabase.from('purchase_orders').select('id', { count: 'exact' }).limit(1).eq('status', status);
-        if (activeVerticalId) q = q.eq('vertical_id', activeVerticalId);
-        return q;
-      };
-      const [
-        { count: pendingVerification },
-        { count: pendingAuthorization },
-        { count: pendingApprovalCount },
-      ] = await Promise.all([
-        buildQ('pending_verification'),
-        buildQ('pending_authorization'),
-        buildQ('pending_approval'),
-      ]);
+      // Consolidated single query across all three approval stages
+      let q: any = supabase
+        .from('purchase_orders')
+        .select('status')
+        .in('status', ['pending_verification', 'pending_authorization', 'pending_approval'])
+        .limit(500);
+
+      if (activeVerticalId) q = q.eq('vertical_id', activeVerticalId);
+
+      const { data: poRows } = await q;
+      const rows = poRows || [];
 
       return {
-        pendingVerification: pendingVerification || 0,
-        pendingAuthorization: pendingAuthorization || 0,
-        pendingApproval: pendingApprovalCount || 0,
+        pendingVerification: rows.filter((r: any) => r.status === 'pending_verification').length,
+        pendingAuthorization: rows.filter((r: any) => r.status === 'pending_authorization').length,
+        pendingApproval: rows.filter((r: any) => r.status === 'pending_approval').length,
       };
     },
   });
 }
 
-/** Targeted debounced realtime listener for live database changes */
+/** Targeted debounced realtime listener for live database changes with deduplicated invalidations */
 export function useDashboardRealtime(options: {
   enableSales: boolean;
   enableProcurement: boolean;
   enableApprovals: boolean;
 }) {
   const queryClient = useQueryClient();
-  const salesTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const procTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const finTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const pendingKeysRef = useRef<Set<string>>(new Set());
+  const batchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     if (!options.enableSales && !options.enableProcurement && !options.enableApprovals) {
       return;
     }
 
-    const triggerSalesInvalidation = () => {
-      if (salesTimerRef.current) clearTimeout(salesTimerRef.current);
-      salesTimerRef.current = setTimeout(() => {
-        queryClient.invalidateQueries({ queryKey: ['dashboard-sales-stats'] });
-        queryClient.invalidateQueries({ queryKey: ['dashboard-leads-consolidated'] });
-        queryClient.invalidateQueries({ queryKey: ['user-quotation-performance'] });
-        queryClient.invalidateQueries({ queryKey: ['drilldown-quotations'] });
-      }, 400);
-    };
-
-    const triggerProcInvalidation = () => {
-      if (procTimerRef.current) clearTimeout(procTimerRef.current);
-      procTimerRef.current = setTimeout(() => {
-        queryClient.invalidateQueries({ queryKey: ['dashboard-procurement-stats'] });
-        queryClient.invalidateQueries({ queryKey: ['dashboard-pending-approvals'] });
-      }, 400);
-    };
-
-    const triggerFinanceInvalidation = () => {
-      if (finTimerRef.current) clearTimeout(finTimerRef.current);
-      finTimerRef.current = setTimeout(() => {
-        queryClient.invalidateQueries({ queryKey: ['dashboard-sales-stats'] });
-        queryClient.invalidateQueries({ queryKey: ['accounts-stats'] });
-        queryClient.invalidateQueries({ queryKey: ['segment-revenue'] });
-      }, 400);
+    const scheduleInvalidations = (keys: string[]) => {
+      keys.forEach((k) => pendingKeysRef.current.add(k));
+      if (batchTimerRef.current) clearTimeout(batchTimerRef.current);
+      // 1000ms buffer window: ensures rapid live updates while buffering bursts from sync workers
+      batchTimerRef.current = setTimeout(() => {
+        const keysToInvalidate = Array.from(pendingKeysRef.current);
+        pendingKeysRef.current.clear();
+        keysToInvalidate.forEach((k) => {
+          queryClient.invalidateQueries({ queryKey: [k] });
+        });
+      }, 1000);
     };
 
     const channel = supabase
       .channel('dashboard-realtime-sync')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'leads' }, triggerSalesInvalidation)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'quotations' }, triggerSalesInvalidation)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'sales_orders' }, triggerFinanceInvalidation)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'customer_payments' }, triggerFinanceInvalidation)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'purchase_orders' }, triggerProcInvalidation)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'leads' }, () =>
+        scheduleInvalidations(['dashboard-sales-stats', 'dashboard-leads-consolidated', 'user-quotation-performance', 'drilldown-quotations', 'spt-inbox'])
+      )
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'lead_qualification' }, () =>
+        scheduleInvalidations(['dashboard-sales-stats', 'dashboard-leads-consolidated', 'user-quotation-performance', 'drilldown-quotations', 'spt-inbox', 'lqt-inbox'])
+      )
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'quotations' }, () =>
+        scheduleInvalidations(['dashboard-sales-stats', 'dashboard-leads-consolidated', 'user-quotation-performance', 'drilldown-quotations'])
+      )
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'sales_orders' }, () =>
+        scheduleInvalidations(['dashboard-sales-stats', 'accounts-stats', 'segment-revenue'])
+      )
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'customer_payments' }, () =>
+        scheduleInvalidations(['dashboard-sales-stats', 'accounts-stats', 'segment-revenue'])
+      )
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'purchase_orders' }, () =>
+        scheduleInvalidations(['dashboard-procurement-stats', 'dashboard-pending-approvals'])
+      )
       .subscribe();
 
     return () => {
-      if (salesTimerRef.current) clearTimeout(salesTimerRef.current);
-      if (procTimerRef.current) clearTimeout(procTimerRef.current);
-      if (finTimerRef.current) clearTimeout(finTimerRef.current);
+      if (batchTimerRef.current) clearTimeout(batchTimerRef.current);
+      pendingKeysRef.current.clear();
       supabase.removeChannel(channel);
     };
   }, [options.enableSales, options.enableProcurement, options.enableApprovals, queryClient]);

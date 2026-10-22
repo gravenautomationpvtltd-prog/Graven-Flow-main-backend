@@ -21,7 +21,8 @@ import {
   Reply,
   ChevronDown,
   GitBranch,
-  Scale
+  Scale,
+  Loader2,
 } from 'lucide-react';
 import { WhatsAppIcon } from '@/components/icons/WhatsAppIcon';
 import { useState } from 'react';
@@ -71,6 +72,7 @@ export function ViewQuotationDialog({
   const { branding } = useTenantBranding();
   const canViewComparison = useCanViewPriceComparison();
   const [comparisonOpen, setComparisonOpen] = useState(false);
+  const [isDownloading, setIsDownloading] = useState(false);
   const companyDefaults = { defaultPhone, defaultEmail };
 
   if (!quotation) return null;
@@ -119,6 +121,8 @@ export function ViewQuotationDialog({
   };
 
   const handleDownloadQuotation = async () => {
+    if (isDownloading) return;
+    setIsDownloading(true);
     try {
       const items = await ensureItemsWithModelNumber(quotation.id, quotation.items as any[] | undefined);
       const completeQuotation = { ...quotation, items } as QuotationWithDetails;
@@ -127,10 +131,14 @@ export function ViewQuotationDialog({
     } catch (err) {
       console.error('PDF generation failed:', err);
       toast.error('Failed to generate quotation PDF. Please try again.');
+    } finally {
+      setIsDownloading(false);
     }
   };
 
   const handleDownloadPI = async () => {
+    if (isDownloading) return;
+    setIsDownloading(true);
     try {
       const items = await ensureItemsWithModelNumber(quotation.id, quotation.items as any[] | undefined);
       const completeQuotation = { ...quotation, items } as QuotationWithDetails;
@@ -139,10 +147,14 @@ export function ViewQuotationDialog({
     } catch (err) {
       console.error('PI PDF generation failed:', err);
       toast.error('Failed to generate Proforma Invoice PDF. Please try again.');
+    } finally {
+      setIsDownloading(false);
     }
   };
 
   const handleDownloadDC = async () => {
+    if (isDownloading) return;
+    setIsDownloading(true);
     try {
       const items = await ensureItemsWithModelNumber(quotation.id, quotation.items as any[] | undefined);
       const completeQuotation = { ...quotation, items } as QuotationWithDetails;
@@ -151,6 +163,8 @@ export function ViewQuotationDialog({
     } catch (err) {
       console.error('DC PDF generation failed:', err);
       toast.error('Failed to generate Delivery Challan PDF. Please try again.');
+    } finally {
+      setIsDownloading(false);
     }
   };
 
@@ -492,9 +506,13 @@ export function ViewQuotationDialog({
           <div className="flex items-center gap-2">
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <Button variant="outline">
-                  <Download className="h-4 w-4 mr-2" />
-                  Download
+                <Button variant="outline" disabled={isDownloading}>
+                  {isDownloading ? (
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  ) : (
+                    <Download className="h-4 w-4 mr-2" />
+                  )}
+                  {isDownloading ? 'Preparing...' : 'Download'}
                   <ChevronDown className="h-4 w-4 ml-1" />
                 </Button>
               </DropdownMenuTrigger>

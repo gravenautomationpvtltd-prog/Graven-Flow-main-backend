@@ -78,11 +78,14 @@ export default function Orders() {
       // Search filter
       if (filters.search) {
         const searchLower = filters.search.toLowerCase();
-        const matchesOrderNumber = order.order_number.toLowerCase().includes(searchLower);
+        const matchesOrderNumber = order.order_number?.toLowerCase().includes(searchLower);
         const matchesCustomer = order.customer?.company_name?.toLowerCase().includes(searchLower);
         const matchesContact = order.customer?.contact_person?.toLowerCase().includes(searchLower);
+        const matchesPhone = order.customer?.phone?.toLowerCase().includes(searchLower);
+        const matchesEmail = order.customer?.email?.toLowerCase().includes(searchLower);
+        const matchesNotes = order.notes?.toLowerCase().includes(searchLower);
         
-        if (!matchesOrderNumber && !matchesCustomer && !matchesContact) {
+        if (!matchesOrderNumber && !matchesCustomer && !matchesContact && !matchesPhone && !matchesEmail && !matchesNotes) {
           return false;
         }
       }

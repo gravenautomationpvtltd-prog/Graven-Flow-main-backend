@@ -55,7 +55,7 @@ export function useIsApproverOnly(): { loading: boolean; approverOnly: boolean }
   const hasOtherRole = (roles || []).some((r: string) => ELEVATED.has(r));
 
   return {
-    loading: loading || isLoading,
+    loading: loading || (!hasOtherRole && !profile && isLoading),
     approverOnly: flag && !hasOtherRole,
   };
 }

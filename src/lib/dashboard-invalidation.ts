@@ -22,6 +22,7 @@ export function invalidateDashboardData(queryClient: QueryClient): Promise<void>
         key.startsWith('quotation') ||
         key === 'quotations' ||
         key === 'spt-inbox' ||
+        key.startsWith('spt-') ||
         key.startsWith('recently-resolved') ||
         key.startsWith('duplicate-leads') ||
         key.startsWith('drilldown-')

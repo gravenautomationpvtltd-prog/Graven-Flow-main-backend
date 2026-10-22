@@ -57,10 +57,15 @@ export function DispatchesTable({ searchQuery = '', statusFilter = 'all' }: Disp
   const { isAdmin } = useAuth();
 
   const filteredDispatches = dispatches.filter(dispatch => {
+    const q = searchQuery.toLowerCase();
     const matchesSearch = 
-      dispatch.dispatch_number.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      dispatch.customer?.company_name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      dispatch.tracking_number?.toLowerCase().includes(searchQuery.toLowerCase());
+      dispatch.dispatch_number?.toLowerCase().includes(q) ||
+      dispatch.customer?.company_name?.toLowerCase().includes(q) ||
+      dispatch.customer?.contact_person?.toLowerCase().includes(q) ||
+      dispatch.customer?.phone?.toLowerCase().includes(q) ||
+      dispatch.tracking_number?.toLowerCase().includes(q) ||
+      dispatch.courier_name?.toLowerCase().includes(q) ||
+      dispatch.eway_bill_number?.toLowerCase().includes(q);
     const matchesStatus = statusFilter === 'all' || dispatch.status === statusFilter;
     return matchesSearch && matchesStatus;
   });

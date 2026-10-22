@@ -49,9 +49,13 @@ export function useCustomers(filters?: CustomerFilters | string) {
         query = query.eq('assigned_sales_id', normalizedFilters.assignedSalesId);
       }
 
-      if (normalizedFilters.search) {
+      const cleanSearch = normalizedFilters.search
+        ? normalizedFilters.search.replace(/[%,()*\\]/g, ' ').replace(/\s+/g, ' ').trim()
+        : '';
+
+      if (cleanSearch) {
         query = query.or(
-          `company_name.ilike.%${normalizedFilters.search}%,contact_person.ilike.%${normalizedFilters.search}%,phone.ilike.%${normalizedFilters.search}%`
+          `company_name.ilike.%${cleanSearch}%,contact_person.ilike.%${cleanSearch}%,phone.ilike.%${cleanSearch}%,alternate_phone.ilike.%${cleanSearch}%,email.ilike.%${cleanSearch}%,gst_number.ilike.%${cleanSearch}%`
         );
       }
 
@@ -101,9 +105,13 @@ export function useInfiniteCustomers(filters?: InfiniteCustomerFilters) {
         query = query.eq('assigned_sales_id', normalizedFilters.assignedSalesId);
       }
 
-      if (normalizedFilters.search) {
+      const cleanSearch = normalizedFilters.search
+        ? normalizedFilters.search.replace(/[%,()*\\]/g, ' ').replace(/\s+/g, ' ').trim()
+        : '';
+
+      if (cleanSearch) {
         query = query.or(
-          `company_name.ilike.%${normalizedFilters.search}%,contact_person.ilike.%${normalizedFilters.search}%,phone.ilike.%${normalizedFilters.search}%`
+          `company_name.ilike.%${cleanSearch}%,contact_person.ilike.%${cleanSearch}%,phone.ilike.%${cleanSearch}%,alternate_phone.ilike.%${cleanSearch}%,email.ilike.%${cleanSearch}%,gst_number.ilike.%${cleanSearch}%`
         );
       }
 
@@ -134,6 +142,10 @@ export async function fetchAllCustomers(search?: string): Promise<Customer[]> {
   let allData: Customer[] = [];
   let page = 0;
 
+  const cleanSearch = search
+    ? search.replace(/[%,()*\\]/g, ' ').replace(/\s+/g, ' ').trim()
+    : '';
+
   while (true) {
     let query = supabase
       .from('customers')
@@ -142,9 +154,9 @@ export async function fetchAllCustomers(search?: string): Promise<Customer[]> {
       .order('created_at', { ascending: false })
       .range(page * PAGE_SIZE, (page + 1) * PAGE_SIZE - 1);
 
-    if (search) {
+    if (cleanSearch) {
       query = query.or(
-        `company_name.ilike.%${search}%,contact_person.ilike.%${search}%,phone.ilike.%${search}%`
+        `company_name.ilike.%${cleanSearch}%,contact_person.ilike.%${cleanSearch}%,phone.ilike.%${cleanSearch}%,alternate_phone.ilike.%${cleanSearch}%,email.ilike.%${cleanSearch}%,gst_number.ilike.%${cleanSearch}%`
       );
     }
 

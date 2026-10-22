@@ -1,10 +1,10 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { fetchUserAssociatedLeadIds } from '../lead-persistence';
+import { fetchUserAssociatedLeadIds, clearLeadPersistenceCache } from '../lead-persistence';
 import { supabase } from '@/integrations/supabase/client';
 
 describe('lead-persistence: fetchUserAssociatedLeadIds', () => {
   beforeEach(() => {
     vi.restoreAllMocks();
+    clearLeadPersistenceCache();
   });
 
   it('returns empty array when userId is empty or null', async () => {

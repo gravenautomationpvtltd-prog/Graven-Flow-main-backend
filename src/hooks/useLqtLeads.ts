@@ -256,9 +256,10 @@ export interface LqtStats {
   rangeLabel: string;
 }
 
-export function useLqtStats(range: LqtRange = DEFAULT_RANGE) {
+export function useLqtStats(range: LqtRange = DEFAULT_RANGE, options?: { enabled?: boolean }) {
   return useQuery({
     queryKey: ['lqt-stats', range.preset, range.from?.toISOString() ?? null, range.to?.toISOString() ?? null],
+    enabled: options?.enabled ?? true,
     queryFn: async (): Promise<LqtStats> => {
       const { from: rangeFrom, to: rangeTo, label: rangeLabel } = resolveRange(range);
       const { data, error } = await supabase.rpc('get_lqt_stats', {

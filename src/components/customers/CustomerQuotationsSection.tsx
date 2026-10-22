@@ -152,7 +152,15 @@ export function CustomerQuotationsSection({ customerId }: CustomerQuotationsSect
     try {
       const { data, error } = await supabase
         .from('quotations')
-        .select('*, customer:customers(*), items:quotation_items(*)')
+        .select(`
+          *,
+          customer:customers(*),
+          created_by_profile:profiles!quotations_created_by_fkey(phone, email, full_name),
+          items:quotation_items(
+            *,
+            product:products(model_number, description, name, weight_kg, length_cm, width_cm, height_cm)
+          )
+        `)
         .eq('id', id)
         .single();
       if (error) throw error;

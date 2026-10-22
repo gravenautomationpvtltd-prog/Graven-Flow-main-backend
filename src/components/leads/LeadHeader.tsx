@@ -60,7 +60,24 @@ export function LeadHeader({ lead }: LeadHeaderProps) {
       return;
     }
 
-    await updateLead.mutateAsync({ id: lead.id, status: status as LeadStatus });
+    if (status === 'quoted') {
+      const { count } = await supabase
+        .from('quotations')
+        .select('*', { count: 'exact', head: true })
+        .eq('lead_id', lead.id)
+        .is('deleted_at', null);
+
+      if (!count || count === 0) {
+        toast.error('Cannot set status to Quoted: No quotation exists for this lead. Please create a quotation first.');
+        return;
+      }
+    }
+
+    try {
+      await updateLead.mutateAsync({ id: lead.id, status: status as LeadStatus });
+    } catch (err: any) {
+      console.error('Failed to change lead status:', err);
+    }
   };
 
   const handleMarkWon = async (reason: string, notes?: string) => {

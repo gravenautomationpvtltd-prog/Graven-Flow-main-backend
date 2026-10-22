@@ -789,10 +789,11 @@ export function useCreateQuotation() {
               });
             }
 
-            // Always ensure lead has_enquiry: true, enquiry_status: 'quoted', and quoted_at set
+            // Always ensure lead status: 'quoted', has_enquiry: true, enquiry_status: 'quoted', and quoted_at set
             await supabase
               .from('leads')
               .update({ 
+                status: 'quoted',
                 last_activity_at: new Date().toISOString(),
                 quoted_at: new Date().toISOString(),
                 has_enquiry: true,

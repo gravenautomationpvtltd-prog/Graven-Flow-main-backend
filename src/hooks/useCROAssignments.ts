@@ -97,11 +97,12 @@ async function fetchAllAssignments(userId: string): Promise<CROAssignment[]> {
   }) as unknown as CROAssignment[];
 }
 
-export function useCROAssignments() {
+export function useCROAssignments(options?: { enabled?: boolean }) {
   const { user } = useAuth();
   const queryClient = useQueryClient();
   const lastFetchedAt = useRef<Date | null>(null);
   const debounceTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const isEnabled = (options?.enabled ?? true) && !!user?.id;
 
   // Debounced invalidation — max once per 30s
   const debouncedInvalidate = useCallback(() => {
@@ -114,7 +115,7 @@ export function useCROAssignments() {
 
   // Realtime subscription for auto-invalidation (throttled)
   useEffect(() => {
-    if (!user?.id) return;
+    if (!isEnabled || !user?.id) return;
 
     const channel = supabase
       .channel('cro-realtime-sync')
@@ -134,7 +135,7 @@ export function useCROAssignments() {
         debounceTimer.current = null;
       }
     };
-  }, [user?.id, debouncedInvalidate]);
+  }, [user?.id, isEnabled, debouncedInvalidate]);
 
   const query = useQuery({
     queryKey: [CRO_QUERY_KEY, user?.id],
@@ -144,7 +145,7 @@ export function useCROAssignments() {
       lastFetchedAt.current = new Date();
       return result;
     },
-    enabled: !!user?.id,
+    enabled: isEnabled,
     refetchOnMount: true,
     refetchOnReconnect: true,
     staleTime: 5 * 60 * 1000, // 5 minutes

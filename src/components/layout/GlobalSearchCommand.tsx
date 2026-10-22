@@ -17,14 +17,19 @@ import {
   Building2, 
   Phone, 
   Search, 
-  Loader2 
+  Loader2,
+  UserCheck,
+  X,
+  AlertCircle,
+  RotateCcw
 } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
 
-interface SearchResult {
+export interface SearchResult {
   id: string;
-  type: 'lead' | 'customer' | 'order' | 'invoice' | 'dispatch' | 'supplier' | 'product' | 'quotation';
+  type: 'lead' | 'customer' | 'order' | 'invoice' | 'dispatch' | 'supplier' | 'product' | 'quotation' | 'employee';
   title: string;
   subtitle?: string;
   badge?: string;
@@ -35,7 +40,7 @@ interface SearchResult {
 }
 
 // PostgREST .or() uses comma + parens as separators. Strip characters that break filter.
-const sanitize = (q: string) => q.replace(/[%,()*\\]/g, '').trim();
+export const sanitize = (q: string) => q.replace(/[%,()*\\]/g, ' ').replace(/\s+/g, ' ').trim();
 
 interface GlobalSearchCommandProps {
   open: boolean;
@@ -47,7 +52,9 @@ export function GlobalSearchCommand({ open, onOpenChange }: GlobalSearchCommandP
   const [search, setSearch] = useState('');
   const [results, setResults] = useState<SearchResult[]>([]);
   const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const debounceTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const activeQueryIdRef = useRef<number>(0);
 
   const getIcon = (type: SearchResult['type']) => {
     switch (type) {
@@ -67,6 +74,8 @@ export function GlobalSearchCommand({ open, onOpenChange }: GlobalSearchCommandP
         return <Building2 className="h-4 w-4 text-orange-500" />;
       case 'product':
         return <Package className="h-4 w-4 text-pink-500" />;
+      case 'employee':
+        return <UserCheck className="h-4 w-4 text-emerald-500" />;
       default:
         return <Search className="h-4 w-4" />;
     }
@@ -92,8 +101,23 @@ export function GlobalSearchCommand({ open, onOpenChange }: GlobalSearchCommandP
         return `/suppliers/${result.id}`;
       case 'product':
         return `/products/${result.id}`;
+      case 'employee':
+        return `/employees/${result.id}`;
       default:
         return '/';
+    }
+  };
+
+  // Safe query executor that catches RLS / permission / network errors per-entity
+  // so that if a user's role lacks permissions on invoices or employees,
+  // other permitted entities (leads, customers, products) continue to return results smoothly.
+  const safeQuery = async <T,>(p: Promise<{ data: T | null; error?: any }>): Promise<T | null> => {
+    try {
+      const res = await p;
+      if (res.error) return null;
+      return res.data;
+    } catch {
+      return null;
     }
   };
 
@@ -102,129 +126,197 @@ export function GlobalSearchCommand({ open, onOpenChange }: GlobalSearchCommandP
     if (!query || query.length < 2) {
       setResults([]);
       setIsLoading(false);
+      setError(null);
       return;
     }
 
+    const currentQueryId = ++activeQueryIdRef.current;
     setIsLoading(true);
+    setError(null);
     const searchResults: SearchResult[] = [];
     const like = `%${query}%`;
 
     try {
-      // 1. Find matching customers first — their IDs bridge to leads, quotes, orders, invoices, and dispatches
-      const customersResult = await supabase
-        .from('customers')
-        .select('id, company_name, contact_person, phone, email, gst_number, assigned_sales:profiles!assigned_sales_id(full_name)')
-        .or(`company_name.ilike.${like},contact_person.ilike.${like},phone.ilike.${like},email.ilike.${like},gst_number.ilike.${like}`)
-        .is('deleted_at', null)
-        .limit(15);
+      // 1. Launch all Tier-1 direct queries + customers query concurrently at T = 0ms
+      const customersPromise = safeQuery(
+        supabase
+          .from('customers')
+          .select('id, company_name, contact_person, phone, alternate_phone, email, gst_number, assigned_sales:profiles!assigned_sales_id(full_name)')
+          .or(`company_name.ilike.${like},contact_person.ilike.${like},phone.ilike.${like},alternate_phone.ilike.${like},email.ilike.${like},gst_number.ilike.${like}`)
+          .is('deleted_at', null)
+          .limit(15)
+      );
 
-      const matchedCustomerIds = (customersResult.data || []).map((c: any) => c.id);
-
-      // 2. Parallel queries across all entities
-      const [
-        leadsByTitleAndRef,
-        leadsByCustomer,
-        quotationsByNumberAndSubject,
-        quotationsByCustomer,
-        ordersByNumber,
-        ordersByCustomer,
-        invoicesByNumber,
-        invoicesByCustomer,
-        dispatchesByNumberAndTracking,
-        dispatchesByCustomer,
-        suppliersResult,
-        productsResult,
-      ] = await Promise.all([
+      const leadsByTitleAndRefPromise = safeQuery(
         supabase
           .from('leads')
-          .select('id, title, status, source_reference, customer:customers(id, company_name, contact_person, phone, email)')
-          .or(`title.ilike.${like},source_reference.ilike.${like}`)
+          .select('id, title, status, source_reference, customer_query, customer:customers(id, company_name, contact_person, phone, email)')
+          .or(`title.ilike.${like},source_reference.ilike.${like},customer_query.ilike.${like}`)
           .is('deleted_at', null)
-          .limit(10),
+          .limit(10)
+      );
 
-        matchedCustomerIds.length
-          ? supabase
-              .from('leads')
-              .select('id, title, status, source_reference, customer:customers(id, company_name, contact_person, phone, email)')
-              .in('customer_id', matchedCustomerIds)
-              .is('deleted_at', null)
-              .limit(10)
-          : Promise.resolve({ data: [] as any[] }),
-
+      const quotationsByNumberAndSubjectPromise = safeQuery(
         supabase
           .from('quotations')
-          .select('id, quotation_number, status, grand_total, subject, customer_id, lead_id, customer:customers(company_name, contact_person)')
-          .or(`quotation_number.ilike.${like},subject.ilike.${like}`)
+          .select('id, quotation_number, status, grand_total, subject, notes, customer_id, lead_id, customer:customers(company_name, contact_person)')
+          .or(`quotation_number.ilike.${like},subject.ilike.${like},notes.ilike.${like}`)
           .is('deleted_at', null)
-          .limit(8),
+          .limit(8)
+      );
 
-        matchedCustomerIds.length
-          ? supabase
-              .from('quotations')
-              .select('id, quotation_number, status, grand_total, subject, customer_id, lead_id, customer:customers(company_name, contact_person)')
-              .in('customer_id', matchedCustomerIds)
-              .is('deleted_at', null)
-              .limit(8)
-          : Promise.resolve({ data: [] as any[] }),
-
+      const ordersByNumberPromise = safeQuery(
         supabase
           .from('sales_orders')
-          .select('id, order_number, status, order_value, customer:customers(company_name, contact_person)')
-          .ilike('order_number', like)
-          .limit(8),
+          .select('id, order_number, status, order_value, notes, customer:customers(company_name, contact_person)')
+          .or(`order_number.ilike.${like},notes.ilike.${like}`)
+          .limit(8)
+      );
 
-        matchedCustomerIds.length
-          ? supabase
-              .from('sales_orders')
-              .select('id, order_number, status, order_value, customer:customers(company_name, contact_person)')
-              .in('customer_id', matchedCustomerIds)
-              .limit(8)
-          : Promise.resolve({ data: [] as any[] }),
-
+      const invoicesByNumberPromise = safeQuery(
         supabase
           .from('invoices')
           .select('id, invoice_number, status, grand_total, customer:customers(company_name, contact_person)')
           .ilike('invoice_number', like)
-          .limit(8),
+          .limit(8)
+      );
 
-        matchedCustomerIds.length
-          ? supabase
-              .from('invoices')
-              .select('id, invoice_number, status, grand_total, customer:customers(company_name, contact_person)')
-              .in('customer_id', matchedCustomerIds)
-              .limit(8)
-          : Promise.resolve({ data: [] as any[] }),
-
+      const dispatchesByNumberAndTrackingPromise = safeQuery(
         supabase
           .from('dispatches')
           .select('id, dispatch_number, status, tracking_number, courier_name, eway_bill_number, customer:customers(company_name, contact_person)')
           .or(`dispatch_number.ilike.${like},tracking_number.ilike.${like},courier_name.ilike.${like},eway_bill_number.ilike.${like}`)
-          .limit(8),
+          .limit(8)
+      );
 
-        matchedCustomerIds.length
-          ? supabase
-              .from('dispatches')
-              .select('id, dispatch_number, status, tracking_number, courier_name, eway_bill_number, customer:customers(company_name, contact_person)')
-              .in('customer_id', matchedCustomerIds)
-              .limit(8)
-          : Promise.resolve({ data: [] as any[] }),
-
+      const suppliersPromise = safeQuery(
         supabase
           .from('suppliers')
           .select('id, name, contact_person, phone, email, gst_number')
           .or(`name.ilike.${like},contact_person.ilike.${like},phone.ilike.${like},email.ilike.${like},gst_number.ilike.${like}`)
-          .limit(10),
+          .limit(10)
+      );
 
+      // Fast, targeted product search — indexing identifiers (name, brand, model_number, category, hsn_code)
+      // omitting heavy unindexed description/search_key text scans to eliminate 2-second bottleneck
+      const productsPromise = safeQuery(
         supabase
           .from('products')
           .select('id, name, category, brand, model_number, hsn_code')
           .or(`name.ilike.${like},category.ilike.${like},brand.ilike.${like},model_number.ilike.${like},hsn_code.ilike.${like}`)
-          .limit(10),
+          .limit(10)
+      );
+
+      const employeesPromise = safeQuery(
+        supabase
+          .from('profiles')
+          .select('id, full_name, email, phone, employment_status, is_active')
+          .or(`full_name.ilike.${like},email.ilike.${like},phone.ilike.${like}`)
+          .limit(10)
+      );
+
+      // As soon as customers query returns, execute bridged queries (if any customer matched)
+      const customerBridgedPromises = customersPromise.then(async (customersData) => {
+        const matchedCustomerIds = (customersData || []).map((c: any) => c.id).slice(0, 30);
+        if (!matchedCustomerIds.length) {
+          return {
+            customersData,
+            leadsByCustomer: [] as any[],
+            quotationsByCustomer: [] as any[],
+            ordersByCustomer: [] as any[],
+            invoicesByCustomer: [] as any[],
+            dispatchesByCustomer: [] as any[],
+          };
+        }
+        const [leadsByCustomer, quotationsByCustomer, ordersByCustomer, invoicesByCustomer, dispatchesByCustomer] =
+          await Promise.all([
+            safeQuery(
+              supabase
+                .from('leads')
+                .select('id, title, status, source_reference, customer_query, customer:customers(id, company_name, contact_person, phone, email)')
+                .in('customer_id', matchedCustomerIds)
+                .is('deleted_at', null)
+                .limit(10)
+            ),
+            safeQuery(
+              supabase
+                .from('quotations')
+                .select('id, quotation_number, status, grand_total, subject, notes, customer_id, lead_id, customer:customers(company_name, contact_person)')
+                .in('customer_id', matchedCustomerIds)
+                .is('deleted_at', null)
+                .limit(8)
+            ),
+            safeQuery(
+              supabase
+                .from('sales_orders')
+                .select('id, order_number, status, order_value, notes, customer:customers(company_name, contact_person)')
+                .in('customer_id', matchedCustomerIds)
+                .limit(8)
+            ),
+            safeQuery(
+              supabase
+                .from('invoices')
+                .select('id, invoice_number, status, grand_total, customer:customers(company_name, contact_person)')
+                .in('customer_id', matchedCustomerIds)
+                .limit(8)
+            ),
+            safeQuery(
+              supabase
+                .from('dispatches')
+                .select('id, dispatch_number, status, tracking_number, courier_name, eway_bill_number, customer:customers(company_name, contact_person)')
+                .in('customer_id', matchedCustomerIds)
+                .limit(8)
+            ),
+          ]);
+
+        return {
+          customersData,
+          leadsByCustomer: leadsByCustomer || [],
+          quotationsByCustomer: quotationsByCustomer || [],
+          ordersByCustomer: ordersByCustomer || [],
+          invoicesByCustomer: invoicesByCustomer || [],
+          dispatchesByCustomer: dispatchesByCustomer || [],
+        };
+      });
+
+      // Await all concurrently
+      const [
+        bridged,
+        leadsByTitleAndRef,
+        quotationsByNumberAndSubject,
+        ordersByNumber,
+        invoicesByNumber,
+        dispatchesByNumberAndTracking,
+        suppliersData,
+        productsData,
+        employeesData,
+      ] = await Promise.all([
+        customerBridgedPromises,
+        leadsByTitleAndRefPromise,
+        quotationsByNumberAndSubjectPromise,
+        ordersByNumberPromise,
+        invoicesByNumberPromise,
+        dispatchesByNumberAndTrackingPromise,
+        suppliersPromise,
+        productsPromise,
+        employeesPromise,
       ]);
+
+      // Check if a newer search was initiated while queries were running
+      if (currentQueryId !== activeQueryIdRef.current) return;
+
+      const {
+        customersData,
+        leadsByCustomer,
+        quotationsByCustomer,
+        ordersByCustomer,
+        invoicesByCustomer,
+        dispatchesByCustomer,
+      } = bridged;
 
       // Process & dedupe leads
       const leadMap = new Map<string, any>();
-      [...(leadsByTitleAndRef.data || []), ...(leadsByCustomer.data || [])].forEach((l) => {
+      [...(leadsByTitleAndRef || []), ...(leadsByCustomer || [])].forEach((l) => {
         if (!leadMap.has(l.id)) leadMap.set(l.id, l);
       });
       leadMap.forEach((lead) => {
@@ -237,28 +329,52 @@ export function GlobalSearchCommand({ open, onOpenChange }: GlobalSearchCommandP
           subtitle: subParts.join(' • ') || undefined,
           badge: lead.status,
           badgeVariant: lead.status === 'won' ? 'default' : lead.status === 'lost' ? 'destructive' : 'secondary',
-          searchableText: [customer?.phone, customer?.email, customer?.company_name, customer?.contact_person, lead.source_reference].filter(Boolean).join(' '),
+          searchableText: [customer?.phone, customer?.email, customer?.company_name, customer?.contact_person, lead.source_reference, lead.customer_query].filter(Boolean).join(' '),
         });
       });
 
       // Process & dedupe customers
-      if (customersResult.data) {
-        customersResult.data.forEach((customer: any) => {
+      if (customersData) {
+        customersData.forEach((customer: any) => {
           const salesPerson = customer.assigned_sales?.full_name;
-          const subtitleParts = [customer.contact_person || customer.phone, customer.gst_number ? `GST: ${customer.gst_number}` : null, salesPerson ? `Sales: ${salesPerson}` : null].filter(Boolean);
+          const subtitleParts = [
+            customer.contact_person || customer.phone,
+            customer.gst_number ? `GST: ${customer.gst_number}` : null,
+            salesPerson ? `Sales: ${salesPerson}` : null
+          ].filter(Boolean);
           searchResults.push({
             id: customer.id,
             type: 'customer',
             title: customer.company_name,
             subtitle: subtitleParts.join(' • ') || undefined,
-            searchableText: [customer.phone, customer.email, customer.contact_person, customer.gst_number, salesPerson].filter(Boolean).join(' '),
+            searchableText: [customer.phone, customer.alternate_phone, customer.email, customer.contact_person, customer.gst_number, salesPerson].filter(Boolean).join(' '),
+          });
+        });
+      }
+
+      // Process & dedupe employees
+      if (employeesData) {
+        employeesData.forEach((employee: any) => {
+          const parts = [
+            employee.email,
+            employee.phone,
+            employee.employment_status ? employee.employment_status.replace(/_/g, ' ') : null,
+          ].filter(Boolean);
+          searchResults.push({
+            id: employee.id,
+            type: 'employee',
+            title: employee.full_name || 'Employee',
+            subtitle: parts.join(' • ') || undefined,
+            badge: employee.is_active ? 'Active' : 'Inactive',
+            badgeVariant: employee.is_active ? 'default' : 'secondary',
+            searchableText: [employee.full_name, employee.email, employee.phone, employee.employment_status].filter(Boolean).join(' '),
           });
         });
       }
 
       // Process & dedupe quotations
       const quoteMap = new Map<string, any>();
-      [...(quotationsByNumberAndSubject.data || []), ...(quotationsByCustomer.data || [])].forEach((q) => {
+      [...(quotationsByNumberAndSubject || []), ...(quotationsByCustomer || [])].forEach((q) => {
         if (!quoteMap.has(q.id)) quoteMap.set(q.id, q);
       });
       quoteMap.forEach((q) => {
@@ -282,7 +398,7 @@ export function GlobalSearchCommand({ open, onOpenChange }: GlobalSearchCommandP
 
       // Process & dedupe orders
       const orderMap = new Map<string, any>();
-      [...(ordersByNumber.data || []), ...(ordersByCustomer.data || [])].forEach((o) => {
+      [...(ordersByNumber || []), ...(ordersByCustomer || [])].forEach((o) => {
         if (!orderMap.has(o.id)) orderMap.set(o.id, o);
       });
       orderMap.forEach((order) => {
@@ -303,7 +419,7 @@ export function GlobalSearchCommand({ open, onOpenChange }: GlobalSearchCommandP
 
       // Process & dedupe invoices
       const invoiceMap = new Map<string, any>();
-      [...(invoicesByNumber.data || []), ...(invoicesByCustomer.data || [])].forEach((inv) => {
+      [...(invoicesByNumber || []), ...(invoicesByCustomer || [])].forEach((inv) => {
         if (!invoiceMap.has(inv.id)) invoiceMap.set(inv.id, inv);
       });
       invoiceMap.forEach((invoice) => {
@@ -324,7 +440,7 @@ export function GlobalSearchCommand({ open, onOpenChange }: GlobalSearchCommandP
 
       // Process & dedupe dispatches
       const dispatchMap = new Map<string, any>();
-      [...(dispatchesByNumberAndTracking.data || []), ...(dispatchesByCustomer.data || [])].forEach((d) => {
+      [...(dispatchesByNumberAndTracking || []), ...(dispatchesByCustomer || [])].forEach((d) => {
         if (!dispatchMap.has(d.id)) dispatchMap.set(d.id, d);
       });
       dispatchMap.forEach((dispatch) => {
@@ -345,8 +461,8 @@ export function GlobalSearchCommand({ open, onOpenChange }: GlobalSearchCommandP
       });
 
       // Process suppliers
-      if (suppliersResult.data) {
-        suppliersResult.data.forEach((supplier: any) => {
+      if (suppliersData) {
+        suppliersData.forEach((supplier: any) => {
           const parts = [
             supplier.contact_person || supplier.phone,
             supplier.gst_number ? `GST: ${supplier.gst_number}` : null,
@@ -362,8 +478,8 @@ export function GlobalSearchCommand({ open, onOpenChange }: GlobalSearchCommandP
       }
 
       // Process products
-      if (productsResult.data) {
-        productsResult.data.forEach((product: any) => {
+      if (productsData) {
+        productsData.forEach((product: any) => {
           const parts = [
             product.brand,
             product.category,
@@ -380,14 +496,19 @@ export function GlobalSearchCommand({ open, onOpenChange }: GlobalSearchCommandP
       }
 
       setResults(searchResults);
-    } catch (error) {
-      console.error('Search error:', error);
+    } catch (err: any) {
+      if (currentQueryId === activeQueryIdRef.current) {
+        console.error('Search error:', err);
+        setError(err?.message || 'Search encountered a problem. Please try again.');
+      }
     } finally {
-      setIsLoading(false);
+      if (currentQueryId === activeQueryIdRef.current) {
+        setIsLoading(false);
+      }
     }
   }, []);
 
-  // Debounced search
+  // Debounced search with cleanup
   useEffect(() => {
     if (debounceTimerRef.current) {
       clearTimeout(debounceTimerRef.current);
@@ -400,6 +521,7 @@ export function GlobalSearchCommand({ open, onOpenChange }: GlobalSearchCommandP
     } else {
       setResults([]);
       setIsLoading(false);
+      setError(null);
     }
 
     return () => {
@@ -409,11 +531,20 @@ export function GlobalSearchCommand({ open, onOpenChange }: GlobalSearchCommandP
     };
   }, [search, searchAll]);
 
+  const handleClear = () => {
+    if (debounceTimerRef.current) {
+      clearTimeout(debounceTimerRef.current);
+    }
+    setSearch('');
+    setResults([]);
+    setError(null);
+    setIsLoading(false);
+  };
+
   const handleSelect = (result: SearchResult) => {
     navigate(getRoute(result));
     onOpenChange(false);
-    setSearch('');
-    setResults([]);
+    handleClear();
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -434,8 +565,19 @@ export function GlobalSearchCommand({ open, onOpenChange }: GlobalSearchCommandP
     }
   };
 
-  // Group results by type in consistent order
-  const typeOrder: SearchResult['type'][] = ['lead', 'customer', 'order', 'quotation', 'invoice', 'dispatch', 'supplier', 'product'];
+  // Group results by type in consistent order (employees included)
+  const typeOrder: SearchResult['type'][] = [
+    'lead',
+    'customer',
+    'employee',
+    'quotation',
+    'order',
+    'invoice',
+    'dispatch',
+    'supplier',
+    'product'
+  ];
+
   const groupedResults = results.reduce((acc, result) => {
     if (!acc[result.type]) {
       acc[result.type] = [];
@@ -447,6 +589,7 @@ export function GlobalSearchCommand({ open, onOpenChange }: GlobalSearchCommandP
   const typeLabels: Record<string, string> = {
     lead: 'Leads',
     customer: 'Customers',
+    employee: 'Employees',
     order: 'Orders',
     quotation: 'Quotations',
     invoice: 'Invoices',
@@ -457,12 +600,27 @@ export function GlobalSearchCommand({ open, onOpenChange }: GlobalSearchCommandP
 
   return (
     <CommandDialog open={open} onOpenChange={onOpenChange} shouldFilter={false}>
-      <CommandInput
-        placeholder="Search leads, customers, orders, invoices, dispatches, suppliers, products..."
-        value={search}
-        onValueChange={setSearch}
-        onKeyDown={handleKeyDown}
-      />
+      <div className="relative">
+        <CommandInput
+          placeholder="Search leads, customers, employees, orders, quotations, products..."
+          value={search}
+          onValueChange={(val) => {
+            setSearch(val);
+            if (error) setError(null);
+          }}
+          onKeyDown={handleKeyDown}
+        />
+        {search && (
+          <button
+            type="button"
+            onClick={handleClear}
+            className="absolute right-3 top-1/2 -translate-y-1/2 p-1 text-muted-foreground hover:text-foreground rounded-sm hover:bg-muted transition-colors"
+            title="Clear search"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        )}
+      </div>
       <CommandList>
         {isLoading && (
           <div className="flex flex-col items-center justify-center py-8 gap-2">
@@ -470,20 +628,36 @@ export function GlobalSearchCommand({ open, onOpenChange }: GlobalSearchCommandP
             <span className="text-xs text-muted-foreground">Searching across OneDesk...</span>
           </div>
         )}
+
+        {error && !isLoading && (
+          <div className="py-8 px-4 flex flex-col items-center justify-center text-center gap-2">
+            <AlertCircle className="h-6 w-6 text-destructive" />
+            <span className="text-sm text-destructive font-medium">{error}</span>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => searchAll(search)}
+              className="mt-2 gap-1 text-xs"
+            >
+              <RotateCcw className="h-3.5 w-3.5" />
+              Retry Search
+            </Button>
+          </div>
+        )}
         
-        {!isLoading && search.trim().length >= 2 && results.length === 0 && (
+        {!isLoading && !error && search.trim().length >= 2 && results.length === 0 && (
           <div className="py-8 text-center text-sm text-muted-foreground">
             No results found for &ldquo;<span className="font-medium text-foreground">{search}</span>&rdquo;
           </div>
         )}
 
-        {!isLoading && search.trim().length < 2 && (
+        {!isLoading && !error && search.trim().length < 2 && (
           <div className="py-8 text-center text-sm text-muted-foreground">
-            Type at least 2 characters to search across leads, customers, orders, invoices, dispatches, suppliers, and products...
+            Type at least 2 characters to search across leads, customers, employees, quotations, orders, and products...
           </div>
         )}
 
-        {!isLoading && typeOrder.filter(t => groupedResults[t]?.length).map((type, index) => {
+        {!isLoading && !error && typeOrder.filter(t => groupedResults[t]?.length).map((type, index) => {
           const items = groupedResults[type];
           return (
             <div key={type}>

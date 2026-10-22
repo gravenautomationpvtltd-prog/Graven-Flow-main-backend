@@ -59,9 +59,9 @@ interface AuthContextType {
 }
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-const AUTH_REQUEST_TIMEOUT_MS = 45_000;
-const AUTH_SESSION_TIMEOUT_MS = 30_000;
-const AUTH_RETRY_DELAYS_MS = [1_000, 2_500];
+const AUTH_REQUEST_TIMEOUT_MS = 10_000;
+const AUTH_SESSION_TIMEOUT_MS = 3_000;
+const AUTH_RETRY_DELAYS_MS = [500, 1_000];
 const AUTH_SERVICE_UNAVAILABLE_MESSAGE =
   'Login service is temporarily unavailable. Please try again shortly.';
 
@@ -157,8 +157,13 @@ const retryOnTransient = async <T extends { error?: unknown }>(
 const clearStoredAuthState = () => {
   try {
     localStorage.removeItem('attendance_check_in_time');
+    localStorage.removeItem('local_dev_user');
     Object.keys(localStorage)
-      .filter((key) => key.startsWith('sb-') && key.endsWith('-auth-token'))
+      .filter((key) =>
+        (key.startsWith('sb-') && key.endsWith('-auth-token')) ||
+        key.startsWith('user_roles_') ||
+        key.startsWith('user_profile_')
+      )
       .forEach((key) => localStorage.removeItem(key));
   } catch (error) {
     console.warn('Unable to clear local auth state:', error);
@@ -178,6 +183,33 @@ const makeFallbackProfile = (activeUser: User): Profile => ({
   manager_id: null,
   is_active: true,
 });
+
+const getStoredProfile = (userId: string): Profile | null => {
+  try {
+    const raw = localStorage.getItem(`user_profile_${userId}`);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (parsed && typeof parsed === 'object' && parsed.id === userId) {
+        return parsed as Profile;
+      }
+    }
+  } catch (e) {
+    console.warn('Unable to get stored user profile:', e);
+  }
+  return null;
+};
+
+const setStoredProfile = (userId: string, profileToStore: Profile | null) => {
+  try {
+    if (profileToStore) {
+      localStorage.setItem(`user_profile_${userId}`, JSON.stringify(profileToStore));
+    } else {
+      localStorage.removeItem(`user_profile_${userId}`);
+    }
+  } catch (e) {
+    console.warn('Unable to store user profile:', e);
+  }
+};
 
 const getStoredRoles = (userId: string): AppRole[] => {
   try {
@@ -210,105 +242,123 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   
   // Track which user we've already fetched profile/roles for
   const fetchedForUserRef = useRef<string | null>(null);
+  // Track in-flight profile promise to prevent duplicate requests across rapid renders
+  const inFlightProfilePromiseRef = useRef<{ userId: string; promise: Promise<void> } | null>(null);
   // Track if initial session check is done
   const initialCheckDoneRef = useRef(false);
 
-  const fetchProfileAndRoles = useCallback(async (activeUser: User) => {
-    // Prevent duplicate fetches for same user
+  const fetchProfileAndRoles = useCallback(async (activeUser: User, force = false): Promise<void> => {
     const userId = activeUser.id;
-    if (fetchedForUserRef.current === userId) return;
-    if (profile && roles.length > 0) {
-      fetchedForUserRef.current = userId;
+    if (!userId) return;
+
+    // Deduplicate in-flight fetch for the same user unless forced
+    if (!force && inFlightProfilePromiseRef.current?.userId === userId) {
+      return inFlightProfilePromiseRef.current.promise;
+    }
+
+    // If profile and roles are already present in state and not forced, complete immediately
+    if (!force && fetchedForUserRef.current === userId && profile && roles.length > 0) {
       setLoading(false);
       return;
     }
-    fetchedForUserRef.current = userId;
 
+    // Step 1: Immediate cache hydration from localStorage to unblock direct page refresh
+    const cachedProfile = getStoredProfile(userId);
     const cachedRoles = getStoredRoles(userId);
-    if (cachedRoles.length > 0) {
+
+    if (cachedProfile && !profile) {
+      setProfile(cachedProfile);
+    }
+    if (cachedRoles.length > 0 && roles.length === 0) {
       setRoles(cachedRoles);
     }
-    
-    // If profile is already present in state, don't block the UI with full-screen spinner
-    if (!profile) {
+
+    // If cached profile or state is present, do not block UI with a full-screen spinner
+    const hasInitialData = Boolean((cachedProfile || profile) && (cachedRoles.length > 0 || roles.length > 0));
+    if (!hasInitialData) {
       setLoading(true);
-    }
-
-    const fetchTimeoutMs = userId === 'f3d622d4-4bef-424e-a62c-dc97a694c900' ? 3_000 : AUTH_REQUEST_TIMEOUT_MS;
-    
-    let success = false;
-    for (let attempt = 1; attempt <= 2; attempt++) {
-      try {
-        // Fetch profile and roles in parallel
-        const [profileResult, rolesResult] = await withTimeout(
-          Promise.all([
-            supabase.from('profiles').select('*').eq('id', userId).maybeSingle(),
-            supabase.from('user_roles').select('role').eq('user_id', userId),
-          ]),
-          fetchTimeoutMs,
-          'Profile loading timed out.'
-        );
-
-        if (fetchedForUserRef.current !== userId) return;
-
-        if (profileResult.error) {
-          console.error(`Error fetching profile (attempt ${attempt}):`, profileResult.error);
-        }
-
-        if (rolesResult.error) {
-          console.error(`Error fetching roles (attempt ${attempt}):`, rolesResult.error);
-        }
-
-        if (profileResult.data) {
-          setProfile(profileResult.data);
-        } else {
-          setProfile(makeFallbackProfile(activeUser));
-        }
-
-        if (rolesResult.data && rolesResult.data.length > 0) {
-          const loadedRoles = rolesResult.data.map(r => r.role);
-          setRoles(loadedRoles);
-          setStoredRoles(userId, loadedRoles);
-        } else if (rolesResult.data && rolesResult.data.length === 0) {
-          if (cachedRoles.length > 0 && attempt < 3) {
-            await sleep(1000);
-            continue;
-          }
-          setRoles([]);
-          setStoredRoles(userId, []);
-        } else if (cachedRoles.length > 0) {
-          setRoles(cachedRoles);
-        }
-
-        success = true;
-        break;
-      } catch (error) {
-        console.warn(`Error fetching profile/roles (attempt ${attempt}/3):`, error);
-        if (attempt < 3) {
-          await sleep(1200 * attempt);
-        }
-      }
-    }
-
-    if (!success) {
-      console.error('All attempts to fetch profile/roles failed.');
-      if (fetchedForUserRef.current === userId) {
-        const finalCachedRoles = getStoredRoles(userId);
-        if (finalCachedRoles.length > 0) {
-          setRoles(finalCachedRoles);
-        } else {
-          setRoles([]);
-        }
-        setProfile(makeFallbackProfile(activeUser));
-        // Clear lock so a future action can retry instead of permanently being locked
-        fetchedForUserRef.current = null;
-      }
-    }
-
-    if (fetchedForUserRef.current === userId) {
+    } else {
       setLoading(false);
     }
-  }, []);
+
+    const executionPromise = (async () => {
+      fetchedForUserRef.current = userId;
+      // Generous 12s timeout: bounds slow queries without artificially cutting off cold TLS/DNS/RLS handshakes on page refresh
+      const fetchTimeoutMs = 12_000;
+      let success = false;
+
+      for (let attempt = 1; attempt <= 2; attempt++) {
+        try {
+          const [profileResult, rolesResult] = await withTimeout(
+            Promise.all([
+              supabase.from('profiles').select('*').eq('id', userId).maybeSingle(),
+              supabase.from('user_roles').select('role').eq('user_id', userId),
+            ]),
+            fetchTimeoutMs,
+            'Profile loading timed out.'
+          );
+
+          // Discard if user changed while queries were in flight
+          if (fetchedForUserRef.current !== userId) return;
+
+          if (profileResult.error) {
+            console.warn(`Profile query error (attempt ${attempt}):`, profileResult.error);
+          }
+          if (rolesResult.error) {
+            console.warn(`Roles query error (attempt ${attempt}):`, rolesResult.error);
+          }
+
+          // Apply profile
+          const resolvedProfile = profileResult.data || cachedProfile || makeFallbackProfile(activeUser);
+          setProfile(resolvedProfile);
+          setStoredProfile(userId, resolvedProfile);
+
+          // Apply roles
+          if (rolesResult.data && rolesResult.data.length > 0) {
+            const loadedRoles = rolesResult.data.map((r: any) => r.role);
+            setRoles(loadedRoles);
+            setStoredRoles(userId, loadedRoles);
+          } else if (rolesResult.data && rolesResult.data.length === 0) {
+            if (cachedRoles.length > 0 && attempt < 2) {
+              await sleep(1000);
+              continue;
+            }
+            setRoles([]);
+            setStoredRoles(userId, []);
+          } else if (cachedRoles.length > 0) {
+            setRoles(cachedRoles);
+          }
+
+          success = true;
+          break;
+        } catch (error) {
+          console.warn(`Attempt ${attempt}/2 failed to fetch profile/roles:`, error);
+          if (attempt < 2) {
+            await sleep(1000);
+          }
+        }
+      }
+
+      // Fallback if network/DB failed: maintain cached or synthesized profile/roles
+      if (!success && fetchedForUserRef.current === userId) {
+        console.warn('[useAuth] Using cached/fallback profile and roles after transient timeout.');
+        const finalProfile = cachedProfile || makeFallbackProfile(activeUser);
+        const finalRoles = cachedRoles.length > 0 ? cachedRoles : [];
+        setProfile((prev) => prev || finalProfile);
+        setStoredProfile(userId, finalProfile);
+        setRoles((prev) => (prev.length > 0 ? prev : finalRoles));
+      }
+    })().finally(() => {
+      // Deterministically exit loading state for this user (never leaves app permanently loading)
+      if (fetchedForUserRef.current === userId) {
+        setLoading(false);
+      }
+      inFlightProfilePromiseRef.current = null;
+    });
+
+    inFlightProfilePromiseRef.current = { userId, promise: executionPromise };
+    return executionPromise;
+  }, [profile, roles]);
 
   // Handle session expiry
   const handleSessionExpiry = useCallback(async (showToast = true) => {
@@ -319,6 +369,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setRoles([]);
     setLoading(false);
     fetchedForUserRef.current = null;
+    inFlightProfilePromiseRef.current = null;
 
     clearStoredAuthState();
     queryClient.clear();
@@ -379,6 +430,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
     );
 
+    // 1b. Immediate local_dev_user hydration for instant offline/dev restore
+    const storedDevImmediate = localStorage.getItem('local_dev_user');
+    if (storedDevImmediate) {
+      try {
+        const parsed = JSON.parse(storedDevImmediate);
+        if (parsed.user && parsed.session && !parsed.session.access_token?.startsWith('dev-session-')) {
+          fetchedForUserRef.current = parsed.user.id;
+          setUser(parsed.user);
+          setSession(parsed.session);
+          if (parsed.profile) setProfile(parsed.profile);
+          if (parsed.roles) setRoles(parsed.roles);
+          setLoading(false);
+          initialCheckDoneRef.current = true;
+        }
+      } catch (e) {}
+    }
+
     // 2. THEN check for existing session (retrying slow/timed-out responses)
     retryOnTransient(
       () =>
@@ -418,7 +486,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         if (storedDev) {
           try {
             const parsed = JSON.parse(storedDev);
-            if (parsed.user && parsed.session) {
+            if (parsed.user && parsed.session && !parsed.session.access_token?.startsWith('dev-session-')) {
               fetchedForUserRef.current = parsed.user.id;
               setUser(parsed.user);
               setSession(parsed.session);
@@ -442,7 +510,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (storedDev) {
         try {
           const parsed = JSON.parse(storedDev);
-          if (parsed.user && parsed.session) {
+          if (parsed.user && parsed.session && !parsed.session.access_token?.startsWith('dev-session-')) {
             fetchedForUserRef.current = parsed.user.id;
             setUser(parsed.user);
             setSession(parsed.session);
@@ -524,9 +592,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           filter: `user_id=eq.${user.id}`
         },
         () => {
-          // Reset ref so fetchProfileAndRoles will re-run
+          // Reset ref and force re-fetch
           fetchedForUserRef.current = null;
-          fetchProfileAndRoles(user);
+          fetchProfileAndRoles(user, true);
         }
       )
       .subscribe();
@@ -543,7 +611,28 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     try {
       clearStoredAuthState();
 
-      // 1. Direct database verification on local development
+      // 1. Supabase cloud auth with real JWT (crucial for PostgREST RPC & RLS)
+      try {
+        const { data, error } = await withTimeout(
+          supabase.auth.signInWithPassword({ email: normalizedEmail, password }),
+          5_000,
+          AUTH_SERVICE_UNAVAILABLE_MESSAGE
+        );
+        if (!error && data?.user && data?.session) {
+          localStorage.removeItem('local_dev_user');
+          setSession(data.session);
+          setUser(data.user);
+          invalidateDashboardData(queryClient);
+          return { error: null };
+        }
+        if (error && !isAuthServiceUnavailableError(error)) {
+          return { error: error as Error | null };
+        }
+      } catch (e) {
+        // Cloud auth timed out or had connection error, fall back to local dev verification
+      }
+
+      // 2. Direct database verification on local development (fallback)
       const isLocalhost = typeof window !== 'undefined' && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
       if (isLocalhost) {
         try {
@@ -562,6 +651,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
               setRoles(authData.roles || []);
               setSession(authData.session);
               setStoredRoles(authData.user.id, authData.roles || []);
+              setStoredProfile(authData.user.id, authData.profile);
               localStorage.setItem('local_dev_user', JSON.stringify({
                 user: authData.user,
                 profile: authData.profile,
@@ -578,24 +668,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         } catch (apiErr) {
           console.warn('Dev login endpoint unreachable, falling back to cloud:', apiErr);
         }
-      }
-
-      // 2. Supabase cloud attempt (fallback)
-      try {
-        const { error } = await withTimeout(
-          supabase.auth.signInWithPassword({ email: normalizedEmail, password }),
-          3_000,
-          AUTH_SERVICE_UNAVAILABLE_MESSAGE
-        );
-        if (!error) {
-          invalidateDashboardData(queryClient);
-          return { error: null };
-        }
-        if (error && !isAuthServiceUnavailableError(error)) {
-          return { error: error as Error | null };
-        }
-      } catch (e) {
-        // Cloud auth timed out or had connection error
       }
 
       // 3. Fallback for Saumya
@@ -706,6 +778,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const signOut = async () => {
     fetchedForUserRef.current = null;
+    inFlightProfilePromiseRef.current = null;
     try {
       await withTimeout(supabase.auth.signOut({ scope: 'local' }), 3_000, 'Local sign-out timed out');
     } finally {
@@ -715,6 +788,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
     setProfile(null);
     setRoles([]);
+    setUser(null);
+    setSession(null);
+    setLoading(false);
   };
 
   const hasRole = (role: AppRole) => roles.includes(role);
@@ -751,25 +827,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     try {
       const { data: { session: currentSession } } = await supabase.auth.getSession();
       if (currentSession?.user) {
-        const uid = currentSession.user.id;
         setUser(currentSession.user);
-        const [profileRes, rolesRes] = await Promise.all([
-          supabase.from('profiles').select('*').eq('id', uid).maybeSingle(),
-          supabase.from('user_roles').select('role').eq('user_id', uid),
-        ]);
-        if (profileRes.data) {
-          setProfile(profileRes.data);
-        }
-        if (rolesRes.data) {
-          const loadedRoles = rolesRes.data.map(r => r.role);
-          setRoles(loadedRoles);
-          setStoredRoles(uid, loadedRoles);
-        }
+        await fetchProfileAndRoles(currentSession.user, true);
       }
     } catch (err) {
       console.error('Error refreshing profile and roles:', err);
     }
-  }, []);
+  }, [fetchProfileAndRoles]);
 
   // isReady = auth bootstrap is complete: not loading AND user+profile are loaded
   // Do NOT require roles.length > 0 — valid users might have roles loading or no roles yet

@@ -85,10 +85,10 @@ export function LeadListTable({
 
   if (!leads?.length) {
     return (
-      <div className="flex flex-col items-center justify-center py-12 text-center">
-        <p className="text-muted-foreground">No leads found</p>
+      <div className="flex flex-col items-center justify-center py-12 text-center rounded-md border border-dashed p-8 bg-muted/20">
+        <p className="text-base font-medium text-foreground">No leads found</p>
         <p className="text-sm text-muted-foreground mt-1">
-          Create your first lead to get started
+          No records match your current view or filter criteria. Try adjusting or resetting your filters.
         </p>
       </div>
     );

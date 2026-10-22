@@ -152,10 +152,14 @@ export default function Employees() {
   });
 
   const filteredEmployees = employees?.filter((employee) => {
-    const matchesSearch =
-      employee.full_name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      employee.email.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      employee.phone?.includes(searchQuery);
+    const q = searchQuery.toLowerCase().trim();
+    const matchesSearch = !q ||
+      employee.full_name?.toLowerCase().includes(q) ||
+      employee.email?.toLowerCase().includes(q) ||
+      employee.phone?.includes(q) ||
+      employee.office?.name?.toLowerCase().includes(q) ||
+      employee.manager?.full_name?.toLowerCase().includes(q) ||
+      employee.roles?.some(r => r.role?.toLowerCase().includes(q));
 
     const matchesOffice = officeFilter === 'all' || employee.office_id === officeFilter;
     

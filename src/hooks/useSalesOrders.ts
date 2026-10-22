@@ -301,6 +301,9 @@ export function useCreateSalesOrder() {
           return existingActiveOrder;
         }
       }
+
+      const { data: { user: authUser } } = await supabase.auth.getUser();
+      const effectiveUserId = user?.id || authUser?.id || null;
       
       const insertPayload = {
         lead_id: data.lead_id,
@@ -310,7 +313,7 @@ export function useCreateSalesOrder() {
         payment_amount: data.payment_amount,
         payment_status: data.payment_status,
         notes: data.notes,
-        created_by: user?.id,
+        created_by: effectiveUserId,
         status: 'pending_documents',
         tenant_id: tenantId,
       } as any;
@@ -353,8 +356,15 @@ export function useCreateSalesOrder() {
     },
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ['sales-orders'] });
+      queryClient.invalidateQueries({ queryKey: ['finance-orders'] });
+      queryClient.invalidateQueries({ queryKey: ['customer-po-ledger'] });
+      queryClient.invalidateQueries({ queryKey: ['employee-orders'] });
+      queryClient.invalidateQueries({ queryKey: ['employee-deals'] });
+      queryClient.invalidateQueries({ queryKey: ['cct-order-detail'] });
+      queryClient.invalidateQueries({ queryKey: ['leads'] });
       if (data?.lead_id) {
         queryClient.invalidateQueries({ queryKey: ['sales-order-by-lead', data.lead_id] });
+        queryClient.invalidateQueries({ queryKey: ['lead', data.lead_id] });
       }
       toast.success('Sales order created');
       logActivity({
@@ -422,6 +432,10 @@ export function useUploadOrderDocument() {
       file: File;
       customName?: string;
     }) => {
+      await ensureFreshSession();
+      const { data: { user: authUser } } = await supabase.auth.getUser();
+      const effectiveUserId = user?.id || authUser?.id || null;
+
       // Upload file to storage
       const fileExt = file.name.split('.').pop();
       const fileName = `${salesOrderId}/${documentType}_${Date.now()}.${fileExt}`;
@@ -445,7 +459,7 @@ export function useUploadOrderDocument() {
           document_type: documentType,
           file_name: file.name,
           file_url: urlData.publicUrl,
-          uploaded_by: user?.id,
+          uploaded_by: effectiveUserId,
           notes: customName || null,
         })
         .select()

@@ -146,8 +146,25 @@ export function EditLeadDialog({ lead, open, onOpenChange }: EditLeadDialogProps
       return;
     }
 
-    await updateLead.mutateAsync(updates as any);
-    onOpenChange(false);
+    if (updates.status === 'quoted') {
+      const { count } = await supabase
+        .from('quotations')
+        .select('*', { count: 'exact', head: true })
+        .eq('lead_id', lead.id)
+        .is('deleted_at', null);
+
+      if (!count || count === 0) {
+        toast.error('Cannot set status to Quoted: No quotation exists for this lead. Please create a quotation first.');
+        return;
+      }
+    }
+
+    try {
+      await updateLead.mutateAsync(updates as any);
+      onOpenChange(false);
+    } catch (err: any) {
+      console.error('Failed to update lead:', err);
+    }
   };
 
   return (

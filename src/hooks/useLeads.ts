@@ -6,6 +6,7 @@ import { logActivity } from '@/lib/activity-logger';
 import { ensureFreshSession, isPermissionError } from '@/utils/sessionGuard';
 import { useVertical } from '@/contexts/VerticalContext';
 import { invalidateDashboardData } from '@/lib/dashboard-invalidation';
+import { startOfDay, endOfDay } from 'date-fns';
 import { fetchUserAssociatedLeadIds } from '@/lib/lead-persistence';
 
 /**
@@ -186,8 +187,10 @@ export interface LeadsResult {
 export function useLeads(filters?: LeadFilters) {
   const { activeVerticalId } = useVertical();
   return useQuery({
-    staleTime: 30 * 1000,
-    refetchInterval: false,
+    staleTime: 5 * 1000,
+    refetchInterval: 15000,
+    refetchOnWindowFocus: true,
+    placeholderData: (previousData) => previousData,
     queryKey: ['leads', filters, activeVerticalId],
     queryFn: async (): Promise<LeadsResult> => {
       const page = filters?.page ?? 0;
@@ -197,23 +200,25 @@ export function useLeads(filters?: LeadFilters) {
 
       // If there's a search term, first find matching customer IDs
       let matchingCustomerIds: string[] = [];
-      if (filters?.search) {
-        const searchTerm = filters.search.trim();
-        if (searchTerm) {
-          const { data: matchingCustomers } = await supabase
-            .from('customers')
-            .select('id')
-            .or(`company_name.ilike.%${searchTerm}%,contact_person.ilike.%${searchTerm}%`)
-            .limit(500);
-          
-          matchingCustomerIds = matchingCustomers?.map(c => c.id) ?? [];
-        }
+      const cleanSearch = filters?.search
+        ? filters.search.replace(/[%,()*\\]/g, ' ').replace(/\s+/g, ' ').trim()
+        : '';
+
+      if (cleanSearch) {
+        const { data: matchingCustomers } = await supabase
+          .from('customers')
+          .select('id')
+          .or(`company_name.ilike.%${cleanSearch}%,contact_person.ilike.%${cleanSearch}%,phone.ilike.%${cleanSearch}%,email.ilike.%${cleanSearch}%,gst_number.ilike.%${cleanSearch}%`)
+          .is('deleted_at', null)
+          .limit(50);
+        
+        matchingCustomerIds = matchingCustomers?.map(c => c.id) ?? [];
       }
 
       // If filtering by assignedTo, find any leads associated with this user
       // (via quotations, qualifications, or assignment history) so leads never disappear
       let associatedLeadIds: string[] = [];
-      if (filters?.assignedTo) {
+      if (filters?.assignedTo && filters.assignedTo !== 'unassigned') {
         associatedLeadIds = (await fetchUserAssociatedLeadIds(filters.assignedTo)).slice(0, 50);
       }
 
@@ -240,54 +245,66 @@ export function useLeads(filters?: LeadFilters) {
         }
 
         if (filters?.enquiryStatuses && filters.enquiryStatuses.length > 0) {
-          query = query.in('enquiry_status', filters.enquiryStatuses);
+          const hasNoEnquiry = filters.enquiryStatuses.includes('no_enquiry' as EnquiryStatus);
+          if (hasNoEnquiry) {
+            query = query.or(`enquiry_status.in.(${filters.enquiryStatuses.join(',')}),enquiry_status.is.null`);
+          } else {
+            query = query.in('enquiry_status', filters.enquiryStatuses);
+          }
         } else if (filters?.enquiryStatus) {
-          query = query.eq('enquiry_status', filters.enquiryStatus);
+          if (filters.enquiryStatus === 'no_enquiry') {
+            query = query.or('enquiry_status.eq.no_enquiry,enquiry_status.is.null');
+          } else {
+            query = query.eq('enquiry_status', filters.enquiryStatus);
+          }
         }
 
-        if (filters?.assignedTo) {
+        if (filters?.assignedTo === 'unassigned') {
+          query = query.is('assigned_to', null);
+        } else if (filters?.assignedTo) {
           if (associatedLeadIds.length > 0 && associatedLeadIds.length <= 50) {
             query = query.or(`assigned_to.eq.${filters.assignedTo},id.in.(${associatedLeadIds.join(',')})`);
           } else {
             query = query.eq('assigned_to', filters.assignedTo);
           }
         }
+
         if (filters?.customerId) {
           query = query.eq('customer_id', filters.customerId);
         }
         
-        // Enhanced search: search in title, customer_query, and matching customer IDs
-        if (filters?.search) {
-          const searchTerm = filters.search.trim();
-          if (searchTerm) {
-            if (matchingCustomerIds.length > 0) {
-              // Search in lead fields OR match by customer IDs
-              query = query.or(
-                `title.ilike.%${searchTerm}%,customer_query.ilike.%${searchTerm}%,customer_id.in.(${matchingCustomerIds.join(',')})`
-              );
-            } else {
-              // No matching customers, just search lead fields
-              query = query.or(
-                `title.ilike.%${searchTerm}%,customer_query.ilike.%${searchTerm}%`
-              );
-            }
+        // Enhanced search: search in title, customer_query, source_reference, and matching customer IDs
+        if (cleanSearch) {
+          if (matchingCustomerIds.length > 0) {
+            query = query.or(
+              `title.ilike.%${cleanSearch}%,customer_query.ilike.%${cleanSearch}%,source_reference.ilike.%${cleanSearch}%,customer_id.in.(${matchingCustomerIds.join(',')})`
+            );
+          } else {
+            query = query.or(
+              `title.ilike.%${cleanSearch}%,customer_query.ilike.%${cleanSearch}%,source_reference.ilike.%${cleanSearch}%`
+            );
           }
         }
         
         if (filters?.dateFrom) {
-          query = query.gte('created_at', filters.dateFrom.toISOString());
+          query = query.gte('created_at', startOfDay(filters.dateFrom).toISOString());
         }
         if (filters?.dateTo) {
-          // Add one day to include the entire end date
-          const endDate = new Date(filters.dateTo);
-          endDate.setDate(endDate.getDate() + 1);
-          query = query.lt('created_at', endDate.toISOString());
+          query = query.lte('created_at', endOfDay(filters.dateTo).toISOString());
         }
         if (filters?.hasEnquiry !== undefined) {
-          query = query.eq('has_enquiry', filters.hasEnquiry);
+          if (filters.hasEnquiry) {
+            query = query.eq('has_enquiry', true);
+          } else {
+            query = query.or('has_enquiry.eq.false,has_enquiry.is.null');
+          }
         }
         if (filters?.priceMatched !== undefined) {
-          query = query.eq('enquiry_status', filters.priceMatched ? 'price_matched' : 'quoted');
+          if (filters.priceMatched) {
+            query = query.eq('enquiry_status', 'price_matched');
+          } else {
+            query = query.or('enquiry_status.neq.price_matched,enquiry_status.is.null');
+          }
         }
         if (activeVerticalId) {
           query = query.eq('vertical_id', activeVerticalId);
@@ -450,6 +467,21 @@ export function useUpdateLead() {
   return useMutation({
     mutationFn: async ({ id, ...updates }: LeadUpdate & { id: string }) => {
       await ensureFreshSession();
+
+      // Universal validation: If transitioning to 'quoted', ensure an active quotation exists
+      if (updates.status === 'quoted') {
+        const { count, error: countErr } = await supabase
+          .from('quotations')
+          .select('*', { count: 'exact', head: true })
+          .eq('lead_id', id)
+          .is('deleted_at', null);
+
+        if (countErr) throw countErr;
+        if (!count || count === 0) {
+          throw new Error('Cannot set status to Quoted: No quotation exists for this lead. Please create a quotation first.');
+        }
+      }
+
       const { data, error } = await supabase
         .from('leads')
         .update(updates)
@@ -464,6 +496,11 @@ export function useUpdateLead() {
       invalidateDashboardData(queryClient);
       queryClient.invalidateQueries({ queryKey: ['leads'] });
       queryClient.invalidateQueries({ queryKey: ['lead', data.id] });
+      queryClient.invalidateQueries({ queryKey: ['spt-inbox'] });
+      queryClient.invalidateQueries({ queryKey: ['lqt-inbox'] });
+      queryClient.invalidateQueries({ queryKey: ['cro-leads'] });
+      queryClient.invalidateQueries({ queryKey: ['employee-deals'] });
+      queryClient.invalidateQueries({ queryKey: ['employee-quotations'] });
       const wasReassignment = 'assigned_to' in (variables as object);
       toast.success(
         wasReassignment
@@ -480,7 +517,9 @@ export function useUpdateLead() {
     onError: (error: Error) => {
       let message = 'Failed to update lead';
       
-      if (error.message.includes('violates foreign key')) {
+      if (error.message.includes('Cannot set status to Quoted')) {
+        message = error.message;
+      } else if (error.message.includes('violates foreign key')) {
         message = 'Invalid customer or user selected';
       } else if (error.message.includes('permission denied') || error.message.includes('row-level security')) {
         message = 'You do not have permission to update this lead';

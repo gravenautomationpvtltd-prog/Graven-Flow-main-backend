@@ -170,12 +170,22 @@ export interface GeneratePDFOptions {
 }
 
 export function generateDocumentPDF({ documentType, quotation, invoiceOptions, companyDefaults, tenantBranding }: GeneratePDFOptions): jsPDF {
-  const doc = new jsPDF('p', 'mm', 'a4');
+  const JsPDFConstructor = typeof jsPDF === 'function' ? jsPDF : (((jsPDF as any)?.default || (jsPDF as any)?.jsPDF) as typeof jsPDF);
+  const doc = new JsPDFConstructor('p', 'mm', 'a4');
+  const callAutoTable = (targetDoc: jsPDF, opts: any) => {
+    if (typeof autoTable === 'function') {
+      return (autoTable as any)(targetDoc, opts);
+    }
+    return ((autoTable as any)?.default || autoTable)(targetDoc, opts);
+  };
   const pageWidth = 210;
   const pageHeight = 297;
   const margin = 15;
   const contentWidth = pageWidth - (margin * 2);
   const isInvoice = documentType === 'invoice';
+  const docNumberLabel = documentType === 'proforma' ? 'Voucher No.' :
+                         documentType === 'delivery_challan' ? 'Delivery Challan No.' :
+                         documentType === 'invoice' ? 'Invoice No.' : 'Quotation No.';
   const currency = (quotation.currency as CurrencyCode) || 'INR';
   const currencySymbol = getCurrencySymbol(currency);
   
@@ -385,40 +395,50 @@ export function generateDocumentPDF({ documentType, quotation, invoiceOptions, c
     doc.text('Terms of Delivery', gridX + 2, row8Y + 3);
   } else {
     // 4-row grid for quotation/proforma
-    const docNumberLabel = documentType === 'proforma' ? 'Voucher No.' :
-                           documentType === 'delivery_challan' ? 'Delivery Challan No.' : 'Quotation No.';
     
-    // Grid Row 1
+    // Grid Row 1: Document Number | Dated (strictly bounded in columns)
     doc.setFont('helvetica', 'normal');
+    doc.setFontSize(7);
     doc.text(docNumberLabel, gridX + 2, y + 4);
     doc.setFont('helvetica', 'bold');
-    doc.text(quotation.quotation_number || '', gridX + 2, y + 8);
+    const docNumLines = doc.splitTextToSize(quotation.quotation_number || '—', gridCol1Width - 4);
+    doc.text(docNumLines[0] || '—', gridX + 2, y + 8);
     
     doc.setFont('helvetica', 'normal');
+    doc.setFontSize(7);
     doc.text('Dated', gridX + gridCol1Width + 2, y + 4);
     doc.setFont('helvetica', 'bold');
     doc.text(formatDateIndian(quotation.created_at), gridX + gridCol1Width + 2, y + 8);
     
-    // Grid Row 2
+    // Grid Row 2: Buyer's Ref./Order No. | Mode/Terms of Payment
     const row2Y = y + gridRowHeight;
     doc.setFont('helvetica', 'normal');
+    doc.setFontSize(7);
     doc.text("Buyer's Ref./Order No.", gridX + 2, row2Y + 4);
     doc.setFont('helvetica', 'bold');
-    doc.text(quotation.quotation_number || '', gridX + 2, row2Y + 8);
+    const refNumber = (quotation as any).reference_number || quotation.quotation_number || '—';
+    const refNumLines = doc.splitTextToSize(refNumber, gridCol1Width - 4);
+    doc.text(refNumLines[0] || '—', gridX + 2, row2Y + 8);
     
     doc.setFont('helvetica', 'normal');
+    doc.setFontSize(7);
     doc.text('Mode/Terms of Payment', gridX + gridCol1Width + 2, row2Y + 4);
     doc.setFont('helvetica', 'bold');
-    doc.text('100% ADVANCE AGAINST PI', gridX + gridCol1Width + 2, row2Y + 8);
+    const paymentTerms = ((quotation as any).payment_remark || '100% ADVANCE AGAINST PI').trim().toUpperCase();
+    const paymentLines = doc.splitTextToSize(paymentTerms, gridCol2Width - 4);
+    doc.text(paymentLines[0] || '100% ADVANCE AGAINST PI', gridX + gridCol1Width + 2, row2Y + 8);
     
     // Grid Row 3
     const row3Y = y + (gridRowHeight * 2);
     doc.setFont('helvetica', 'normal');
+    doc.setFontSize(7);
     doc.text('Dispatched through', gridX + 2, row3Y + 5);
     doc.text('Other References', gridX + gridCol1Width + 2, row3Y + 5);
     
     // Grid Row 4
     const row4Y = y + (gridRowHeight * 3);
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(7);
     doc.text('Terms of Delivery', gridX + 2, row4Y + 5);
     doc.text('Destination', gridX + gridCol1Width + 2, row4Y + 5);
   }
@@ -435,22 +455,43 @@ export function generateDocumentPDF({ documentType, quotation, invoiceOptions, c
   const consigneeStateCode = consignee?.gst_number ? getStateCode(consignee.gst_number) : '';
   const consigneeStateName = consigneeStateCode ? getStateName(consigneeStateCode) : (consignee?.state || '');
   
-  // Build full address for consignee
-  const consigneeAddressParts = [];
-  if (consignee?.address) consigneeAddressParts.push(consignee.address);
-  if (consignee?.city) consigneeAddressParts.push(consignee.city);
-  if (consignee?.pincode) consigneeAddressParts.push(consignee.pincode);
+  // Build full address for consignee with normalized whitespace
+  const consigneeAddressParts: string[] = [];
+  if (consignee?.address) consigneeAddressParts.push(normalizeWhitespace(consignee.address));
+  if (consignee?.city) consigneeAddressParts.push(normalizeWhitespace(consignee.city));
+  if (consignee?.pincode) consigneeAddressParts.push(normalizeWhitespace(consignee.pincode));
   const consigneeFullAddress = consigneeAddressParts.join(', ').toUpperCase();
   
-  // Build full address for buyer (customer)
-  const buyerAddressParts = [];
-  if (customer?.address) buyerAddressParts.push(customer.address);
-  if (customer?.city) buyerAddressParts.push(customer.city);
-  if (customer?.pincode) buyerAddressParts.push(customer.pincode);
+  // Build full address for buyer (customer) with normalized whitespace
+  const buyerAddressParts: string[] = [];
+  if (customer?.address) buyerAddressParts.push(normalizeWhitespace(customer.address));
+  if (customer?.city) buyerAddressParts.push(normalizeWhitespace(customer.city));
+  if (customer?.pincode) buyerAddressParts.push(normalizeWhitespace(customer.pincode));
   const buyerFullAddress = buyerAddressParts.join(', ').toUpperCase();
+
+  const consigneeName = normalizeWhitespace(consignee?.company_name || '—').toUpperCase();
+  const buyerName = normalizeWhitespace(customer?.company_name || '—').toUpperCase();
+
+  const maxAddrWidth = leftColWidth - 4; // Bounded width inside left column (approx 95mm)
   
-  const consigneeHeight = 24;
-  const buyerHeight = 24;
+  // Auto-wrap company names and addresses to prevent overflowing borders
+  doc.setFontSize(8);
+  doc.setFont('helvetica', 'bold');
+  const consigneeNameLines: string[] = doc.splitTextToSize(consigneeName, maxAddrWidth);
+  const buyerNameLines: string[] = doc.splitTextToSize(buyerName, maxAddrWidth);
+
+  doc.setFontSize(7);
+  doc.setFont('helvetica', 'normal');
+  const consigneeAddressLines: string[] = doc.splitTextToSize(consigneeFullAddress, maxAddrWidth);
+  const buyerAddressLines: string[] = doc.splitTextToSize(buyerFullAddress, maxAddrWidth);
+
+  // Dynamic box height calculation so long customer names & addresses are never clipped
+  const consigneeExtraLines = Math.min(consigneeAddressLines.length, 2) + ((consigneeStateName || consigneeStateCode) ? 1 : 0);
+  const consigneeHeight = Math.max(24, 7 + (consigneeNameLines.length * 3.5) + (consigneeExtraLines * 3));
+
+  const buyerExtraLines = Math.min(buyerAddressLines.length, 2) + (customer?.gst_number ? 1 : 0) + ((customerStateName || customerStateCode) ? 1 : 0);
+  const buyerHeight = Math.max(24, 7 + (buyerNameLines.length * 3.5) + (buyerExtraLines * 3));
+
   const totalAddressHeight = consigneeHeight + buyerHeight;
   
   // Left column for Consignee
@@ -460,18 +501,20 @@ export function generateDocumentPDF({ documentType, quotation, invoiceOptions, c
   doc.rect(margin + leftColWidth, y, rightColWidth, totalAddressHeight, 'S');
   
   // Consignee content
-  doc.setFontSize(8);
+  doc.setFontSize(7.5);
   doc.setFont('helvetica', 'normal');
   doc.text('Consignee (Ship to)', margin + 2, y + 4);
   
-  let custY = y + 8;
+  let custY = y + 7.5;
+  doc.setFontSize(consigneeNameLines.length > 2 ? 7 : 8);
   doc.setFont('helvetica', 'bold');
-  doc.text((consignee?.company_name || '').toUpperCase(), margin + 2, custY);
-  custY += 4;
+  consigneeNameLines.forEach((line: string) => {
+    doc.text(line, margin + 2, custY);
+    custY += 3.5;
+  });
   
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(7);
-  const consigneeAddressLines = doc.splitTextToSize(consigneeFullAddress, leftColWidth - 6);
   consigneeAddressLines.slice(0, 2).forEach((line: string) => {
     doc.text(line, margin + 2, custY);
     custY += 3;
@@ -487,18 +530,20 @@ export function generateDocumentPDF({ documentType, quotation, invoiceOptions, c
   doc.rect(margin, y, leftColWidth, buyerHeight, 'S');
   
   // Buyer content
-  doc.setFontSize(8);
+  doc.setFontSize(7.5);
   doc.setFont('helvetica', 'normal');
   doc.text('Buyer (Bill to)', margin + 2, y + 4);
   
-  custY = y + 8;
+  custY = y + 7.5;
+  doc.setFontSize(buyerNameLines.length > 2 ? 7 : 8);
   doc.setFont('helvetica', 'bold');
-  doc.text((customer?.company_name || '').toUpperCase(), margin + 2, custY);
-  custY += 4;
+  buyerNameLines.forEach((line: string) => {
+    doc.text(line, margin + 2, custY);
+    custY += 3.5;
+  });
   
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(7);
-  const buyerAddressLines = doc.splitTextToSize(buyerFullAddress, leftColWidth - 6);
   buyerAddressLines.slice(0, 2).forEach((line: string) => {
     doc.text(line, margin + 2, custY);
     custY += 3;
@@ -695,7 +740,7 @@ export function generateDocumentPDF({ documentType, quotation, invoiceOptions, c
     : [10, 70, 18, 20, 24, 12, 26];
   
   // Generate table using autoTable
-  autoTable(doc, {
+  callAutoTable(doc, {
     startY: y,
     head: headColumns,
     body: tableData,
@@ -786,19 +831,58 @@ export function generateDocumentPDF({ documentType, quotation, invoiceOptions, c
         const docTitle = documentType === 'proforma' ? 'PROFORMA INVOICE' : 
                          documentType === 'invoice' ? 'Tax Invoice' :
                          documentType === 'delivery_challan' ? 'DELIVERY CHALLAN' : 'QUOTATION';
-        const docNumber = quotation.quotation_number;
+        const docNumber = quotation.quotation_number || '—';
         const headerY = margin;
         
         // Document title with (Contd.)
-        doc.setFontSize(12);
+        doc.setFontSize(11);
         doc.setFont('helvetica', 'bold');
         doc.text(`${docTitle} (Contd.)`, pageWidth / 2, headerY, { align: 'center' });
         
-        // Reference number and page number below title
-        doc.setFontSize(8);
+        const contRefY = headerY + 2.5;
+        const col1W = 52;
+        const col2W = 38;
+        const col3W = contentWidth - col1W - col2W;
+
+        const customerDisplayName = normalizeWhitespace(customer?.company_name || '—').toUpperCase();
+        doc.setFontSize(7);
+        doc.setFont('helvetica', 'bold');
+        const custLines: string[] = doc.splitTextToSize(customerDisplayName, col3W - 22);
+        const refBarH = 7.5;
+
+        doc.setDrawColor(0, 0, 0);
+        doc.setLineWidth(0.2);
+        doc.rect(margin, contRefY, contentWidth, refBarH, 'S');
+        doc.line(margin + col1W, contRefY, margin + col1W, contRefY + refBarH);
+        doc.line(margin + col1W + col2W, contRefY, margin + col1W + col2W, contRefY + refBarH);
+
+        // Col 1: Doc Number
+        doc.setFontSize(6);
         doc.setFont('helvetica', 'normal');
-        doc.text(`Ref: ${docNumber}`, margin, headerY + 5);
-        doc.text(`Page ${pageNumber}`, pageWidth - margin, headerY + 5, { align: 'right' });
+        doc.text('Doc No.', margin + 2, contRefY + 2.8);
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(6.8);
+        doc.text(docNumber, margin + 2, contRefY + 6);
+
+        // Col 2: Date
+        doc.setFontSize(6);
+        doc.setFont('helvetica', 'normal');
+        doc.text('Date', margin + col1W + 2, contRefY + 2.8);
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(6.8);
+        doc.text(formatDateIndian(quotation.created_at), margin + col1W + 2, contRefY + 6);
+
+        // Col 3: Customer & Page
+        doc.setFontSize(6);
+        doc.setFont('helvetica', 'normal');
+        doc.text('Customer', margin + col1W + col2W + 2, contRefY + 2.8);
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(6.8);
+        doc.text(custLines[0] || '—', margin + col1W + col2W + 2, contRefY + 6);
+
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(6.8);
+        doc.text(`Page ${pageNumber}`, margin + contentWidth - 2, contRefY + 4.5, { align: 'right' });
       }
       
       // Draw vertical column separator lines manually
@@ -875,10 +959,20 @@ export function generateDocumentPDF({ documentType, quotation, invoiceOptions, c
   // Dynamic height based on number of lines (minimum 12mm for proper spacing)
   const amountWordsHeight = Math.max(12, 8 + (textLines * lineHeight));
   
-  // === PAGE BREAK CHECK: Ensure Amount in Words + Footer fit on same page ===
+  // === PAGE BREAK CHECK: Ensure Amount in Words + Payment Schedule + Notes + Footer fit on same page ===
   const footerSectionHeight = 55; // Footer height
-  const footerBuffer = 10; // Buffer for "Computer Generated Document"
-  const totalRequiredSpace = amountWordsHeight + footerSectionHeight + footerBuffer;
+  const footerBuffer = 10; // Buffer for bottom margins and spacing
+  
+  // Estimate payment schedule height if present
+  const estAdvanceRaw = (quotation as any).advance_percent || (quotation as any).advance_amount;
+  const estPayRemark = ((quotation as any).payment_remark || '').trim();
+  const estHasPay = Boolean(estAdvanceRaw || estPayRemark);
+  const estPayHeight = estHasPay ? 18 : 0;
+  
+  // Estimate notes height if present
+  const estNotesHeight = quotation.notes && quotation.notes.trim() ? 16 : 0;
+
+  const totalRequiredSpace = amountWordsHeight + estPayHeight + estNotesHeight + footerSectionHeight + footerBuffer;
   const currentAvailableSpace = pageHeight - y;
 
   if (currentAvailableSpace < totalRequiredSpace) {
@@ -1341,12 +1435,6 @@ export function generateDocumentPDF({ documentType, quotation, invoiceOptions, c
   doc.setFont('helvetica', 'normal');
   doc.text('Authorised Signatory', bankX + (bankWidth / 2), sigCompanyY + 14, { align: 'center' });
   
-  // ============= COMPUTER GENERATED FOOTER =============
-  // Position exactly 10px from bottom (≈ 3mm)
-  doc.setFontSize(7);
-  doc.setFont('helvetica', 'normal');
-  doc.text('This is a Computer Generated Document', pageWidth / 2, pageHeight - 5, { align: 'center' });
-
   // =========================================================================
   // CONTINUATION PAGE: DETAILED ITEM TABLE (SPECIFICATIONS & WEIGHT DETAILS)
   // Columns: Sr No. | Item | HSN | QTY | DIMENSIONS | UNIT WEIGHT | TOTAL WEIGHT
@@ -1356,7 +1444,7 @@ export function generateDocumentPDF({ documentType, quotation, invoiceOptions, c
   let contY = margin;
 
   // Header on continuation page
-  doc.setFontSize(12);
+  doc.setFontSize(11);
   doc.setFont('helvetica', 'bold');
   const specTitle = documentType === 'proforma' ? 'PROFORMA INVOICE - ITEM SPECIFICATIONS & WEIGHT DETAILS' :
                     documentType === 'invoice' ? 'TAX INVOICE - ITEM SPECIFICATIONS & WEIGHT DETAILS' :
@@ -1365,19 +1453,55 @@ export function generateDocumentPDF({ documentType, quotation, invoiceOptions, c
   doc.text(specTitle, pageWidth / 2, contY, { align: 'center' });
   contY += 6;
 
-  // Reference bar (Quotation No, Date, Customer)
-  doc.setFontSize(7.5);
-  doc.setFont('helvetica', 'normal');
-  doc.text(`Quotation No: ${quotation.quotation_number || '—'}`, margin, contY);
-  doc.text(`Date: ${formatDateIndian(quotation.created_at)}`, pageWidth / 2, contY, { align: 'center' });
-  doc.text(`Customer: ${(customer?.company_name || '—').toUpperCase()}`, pageWidth - margin, contY, { align: 'right' });
-  contY += 4;
+  // Standardized Reference Bar: Quotation No | Date | Customer (3 isolated columns to guarantee zero overlapping)
+  const refBarY = contY;
+  const col1W = 52;  // Quotation No zone
+  const col2W = 38;  // Date zone
+  const col3W = contentWidth - col1W - col2W; // 90mm Customer zone
 
-  // Divider line
+  const customerDisplayName = normalizeWhitespace(customer?.company_name || '—').toUpperCase();
+  doc.setFontSize(7.5);
+  doc.setFont('helvetica', 'bold');
+  const custLines: string[] = doc.splitTextToSize(customerDisplayName, col3W - 4);
+  const refBarHeight = Math.max(9, 3.5 + (custLines.length * 3.2));
+
+  // Outer reference box
   doc.setDrawColor(0, 0, 0);
-  doc.setLineWidth(0.3);
-  doc.line(margin, contY, pageWidth - margin, contY);
-  contY += 3;
+  doc.setLineWidth(0.2);
+  doc.rect(margin, refBarY, contentWidth, refBarHeight, 'S');
+
+  // Vertical column dividers
+  doc.line(margin + col1W, refBarY, margin + col1W, refBarY + refBarHeight);
+  doc.line(margin + col1W + col2W, refBarY, margin + col1W + col2W, refBarY + refBarHeight);
+
+  // Column 1: Quotation No
+  doc.setFontSize(6.5);
+  doc.setFont('helvetica', 'normal');
+  doc.text(docNumberLabel, margin + 2, refBarY + 3.2);
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(7.5);
+  const qNumLines: string[] = doc.splitTextToSize(quotation.quotation_number || '—', col1W - 4);
+  doc.text(qNumLines[0] || '—', margin + 2, refBarY + 6.8);
+
+  // Column 2: Date
+  doc.setFontSize(6.5);
+  doc.setFont('helvetica', 'normal');
+  doc.text('Date', margin + col1W + 2, refBarY + 3.2);
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(7.5);
+  doc.text(formatDateIndian(quotation.created_at), margin + col1W + 2, refBarY + 6.8);
+
+  // Column 3: Customer Name (strictly bounded in col3W, wraps cleanly, NEVER overlaps Date)
+  doc.setFontSize(6.5);
+  doc.setFont('helvetica', 'normal');
+  doc.text('Customer', margin + col1W + col2W + 2, refBarY + 3.2);
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(7.5);
+  custLines.forEach((line: string, idx: number) => {
+    doc.text(line, margin + col1W + col2W + 2, refBarY + 6.8 + (idx * 3.2));
+  });
+
+  contY = refBarY + refBarHeight + 3;
 
   // Build continuation table rows
   let totalCalculatedWeight = 0;
@@ -1444,7 +1568,7 @@ export function generateDocumentPDF({ documentType, quotation, invoiceOptions, c
   const specColWidths = [14, 62, 18, 20, 28, 19, 19];
   const specItemCount = items.length;
 
-  autoTable(doc, {
+  callAutoTable(doc, {
     startY: contY,
     head: [['Sr No.', 'Item', 'HSN', 'QTY', 'DIMENSIONS', 'UNIT WEIGHT', 'TOTAL WEIGHT']],
     body: specTableData,
@@ -1520,7 +1644,7 @@ export function generateDocumentPDF({ documentType, quotation, invoiceOptions, c
     },
     didDrawPage: (data) => {
       const pageNumber = data.pageNumber;
-      const tStartY = ((data.settings.startY as number) || margin);
+      const tStartY = pageNumber > 1 ? (margin + 15) : ((data.settings.startY as number) || margin);
       const tEndY = data.cursor?.y || tStartY;
 
       doc.setDrawColor(0, 0, 0);

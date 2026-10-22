@@ -205,10 +205,16 @@ export default function Leads() {
     sortBy: filters.sortBy,
     page: currentPage,
     pageSize: pageSize,
-    hasEnquiry: filters.hasEnquiry.length === 1 ? filters.hasEnquiry[0] === 'yes' : undefined,
+    hasEnquiry: filters.hasEnquiry.includes('yes') && !filters.hasEnquiry.includes('no')
+      ? true
+      : filters.hasEnquiry.includes('no') && !filters.hasEnquiry.includes('yes')
+      ? false
+      : undefined,
     enquiryStatuses: filters.enquiryStatuses.length > 0 ? filters.enquiryStatuses as EnquiryStatus[] : undefined,
-    priceMatched: filters.priceMatched.length === 1 
-      ? (filters.priceMatched[0] === 'matched' ? true : false) 
+    priceMatched: filters.priceMatched.includes('matched') && !filters.priceMatched.includes('not_matched')
+      ? true
+      : filters.priceMatched.includes('not_matched') && !filters.priceMatched.includes('matched')
+      ? false
       : undefined,
   };
 

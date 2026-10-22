@@ -23,6 +23,7 @@ import {
 import { toast } from "sonner";
 import { Upload, X, FileText, Loader2 } from "lucide-react";
 import { requireTenantId } from "@/utils/tenantUtils";
+import { ensureFreshSession } from "@/utils/sessionGuard";
 
 interface AccountsRecordOrderDialogProps {
   open: boolean;
@@ -36,6 +37,7 @@ export function AccountsRecordOrderDialog({
   const { user } = useAuth();
   const queryClient = useQueryClient();
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const isSubmittingRef = useRef(false);
 
   const [selectedSalesperson, setSelectedSalesperson] = useState("");
   const [selectedCustomerId, setSelectedCustomerId] = useState("");
@@ -118,9 +120,14 @@ export function AccountsRecordOrderDialog({
     setCustomerSearch("");
     setNotes("");
     setPoFile(null);
+    isSubmittingRef.current = false;
   };
 
   const handleSubmit = async () => {
+    if (isSubmittingRef.current || isSubmitting) {
+      return;
+    }
+
     if (!selectedSalesperson) {
       toast.error("Please select a salesperson");
       return;
@@ -134,30 +141,66 @@ export function AccountsRecordOrderDialog({
       return;
     }
 
+    isSubmittingRef.current = true;
     setIsSubmitting(true);
     try {
+      await ensureFreshSession();
       const tenantId = await requireTenantId();
       const orderValue = selectedQuotation?.grand_total || 0;
 
-      // Create the sales order
-      const { data: order, error: orderError } = await supabase
+      // Idempotency pre-check: prevent duplicate orders for the same quotation
+      const { data: existingOrder } = await supabase
         .from("sales_orders")
-        .insert([{
-          order_number: "TEMP",
+        .select("id, order_number, status")
+        .eq("quotation_id", selectedQuotationId)
+        .neq("status", "cancelled")
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (existingOrder && existingOrder.status !== "pending_documents") {
+        toast.error(`Order already exists for this quotation (${existingOrder.order_number})`);
+        return;
+      }
+
+      const { data: { user: authUser } } = await supabase.auth.getUser();
+      const effectiveUserId = user?.id || authUser?.id || null;
+
+      let order = existingOrder;
+      if (!order) {
+        // Create the sales order (do NOT hardcode "TEMP", let sequence/trigger generate order_number)
+        const insertPayload = {
           customer_id: selectedCustomerId,
           quotation_id: selectedQuotationId,
-          created_by: selectedSalesperson,
+          created_by: selectedSalesperson || effectiveUserId,
           order_value: orderValue,
           status: "pending_documents" as const,
           payment_status: "pending" as const,
           payment_amount: 0,
           notes: notes || null,
           tenant_id: tenantId,
-        }])
-        .select()
-        .single();
+        } as any;
 
-      if (orderError) throw orderError;
+        let { data: newOrder, error: orderError } = await supabase
+          .from("sales_orders")
+          .insert(insertPayload)
+          .select()
+          .single();
+
+        // Retry once on collision
+        if (orderError?.code === "23505" && orderError?.message?.includes("order_number")) {
+          const retryRes = await supabase
+            .from("sales_orders")
+            .insert(insertPayload)
+            .select()
+            .single();
+          newOrder = retryRes.data;
+          orderError = retryRes.error;
+        }
+
+        if (orderError) throw orderError;
+        order = newOrder;
+      }
 
       // Upload PO if provided
       if (poFile && order) {
@@ -178,13 +221,20 @@ export function AccountsRecordOrderDialog({
             document_type: "customer_po",
             file_name: poFile.name,
             file_url: urlData.publicUrl,
-            uploaded_by: user?.id,
+            uploaded_by: effectiveUserId,
           });
         }
       }
 
       toast.success(`Order ${order.order_number} created successfully`);
+      // Invalidate queries across all role dashboards
       queryClient.invalidateQueries({ queryKey: ["finance-orders"] });
+      queryClient.invalidateQueries({ queryKey: ["sales-orders"] });
+      queryClient.invalidateQueries({ queryKey: ["customer-po-ledger"] });
+      queryClient.invalidateQueries({ queryKey: ["employee-orders"] });
+      queryClient.invalidateQueries({ queryKey: ["employee-deals"] });
+      queryClient.invalidateQueries({ queryKey: ["leads"] });
+      queryClient.invalidateQueries({ queryKey: ["quotations"] });
       resetForm();
       onOpenChange(false);
     } catch (error: any) {
@@ -192,6 +242,7 @@ export function AccountsRecordOrderDialog({
       toast.error(error.message || "Failed to create order");
     } finally {
       setIsSubmitting(false);
+      isSubmittingRef.current = false;
     }
   };
 

@@ -37,7 +37,13 @@ import {
   CircleDollarSign,
   AlertCircle,
   RefreshCw,
+  Inbox,
+  XCircle,
+  Phone,
+  CheckCircle2,
 } from 'lucide-react';
+import { useLqtStats } from '@/hooks/useLqtLeads';
+import { useCROAssignments } from '@/hooks/useCROAssignments';
 import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
@@ -155,14 +161,12 @@ function FullDashboard() {
     }
   };
 
-  // Role-based landing redirects: pure-CRO → LQT Inbox, pure-CST → /customer-success, pure-TST → /tst
+  // Role-based landing redirects: pure-CST → /customer-success, pure-TST → /tst
   useEffect(() => {
     if (!roles || roles.length === 0) return;
     const isPureRole = (flag: boolean) =>
       flag && !isAdmin && !isManager && !isSales && !isProcurement && !isWarehouse && !isAccounts;
-    if (isPureRole(isCRO) && !isCST && !isTST) {
-      navigate('/lqt-inbox', { replace: true });
-    } else if (isPureRole(isCST) && !isCRO && !isTST) {
+    if (isPureRole(isCST) && !isCRO && !isTST) {
       navigate('/customer-success', { replace: true });
     } else if (isPureRole(isTST) && !isCRO && !isCST) {
       navigate('/tst', { replace: true });
@@ -213,6 +217,19 @@ function FullDashboard() {
   const { data: stats, isLoading: salesLoading } = useSalesStats(dateRange, showSalesDashboard, scopedAssignedTo);
   const { data: procurementStats, isLoading: procLoading } = useProcurementStats(dateRange, showProcurementDashboard);
   const { data: pendingApprovals } = usePendingApprovals(canSeeApprovals);
+  
+  // CRO data hooks
+  const { data: lqtStats, isLoading: lqtStatsLoading } = useLqtStats(undefined, { enabled: showCRODashboard });
+  const { data: croAssignments = [], isLoading: croAssignmentsLoading } = useCROAssignments({ enabled: showCRODashboard });
+
+  const croContactedCount = useMemo(() => {
+    return croAssignments.filter(a => a.status === 'contacted' || a.status === 'enquiry_received').length;
+  }, [croAssignments]);
+
+  const croPendingCount = useMemo(() => {
+    return croAssignments.filter(a => a.status === 'pending' || a.status === 'no_response').length;
+  }, [croAssignments]);
+
   const loading = salesLoading || procLoading;
 
   // Sales stat cards with dynamic labels based on selected period
@@ -424,13 +441,75 @@ function FullDashboard() {
     },
   ];
 
+  // CRO stat cards
+  const croStatCards = [
+    {
+      title: 'Pending Qualification',
+      value: lqtStats?.pending ?? 0,
+      change: null,
+      changeLabel: lqtStats?.oldestPendingLabel ? `Oldest: ${lqtStats.oldestPendingLabel}` : 'in LQT queue',
+      icon: Inbox,
+      trend: (lqtStats?.pending ?? 0) > 0 ? ('warning' as const) : ('neutral' as const),
+      color: 'text-amber-500',
+      bgColor: 'bg-amber-500/10',
+      url: '/lqt-inbox',
+    },
+    {
+      title: 'Qualified Today',
+      value: lqtStats?.qualifiedToday ?? 0,
+      change: null,
+      changeLabel: 'passed to sales team',
+      icon: CheckCircle2,
+      trend: 'up' as const,
+      color: 'text-success',
+      bgColor: 'bg-success/10',
+      url: '/lqt-inbox?tab=qualified',
+    },
+    {
+      title: 'Discarded Today',
+      value: lqtStats?.discardedToday ?? 0,
+      change: null,
+      changeLabel: 'junk / duplicate filtered',
+      icon: XCircle,
+      trend: 'neutral' as const,
+      color: 'text-destructive',
+      bgColor: 'bg-destructive/10',
+      url: '/lqt-inbox?tab=discarded',
+    },
+    {
+      title: 'Assigned Customers',
+      value: croAssignments.length,
+      change: null,
+      changeLabel: 'in outreach portfolio',
+      icon: Users,
+      trend: 'neutral' as const,
+      color: 'text-primary',
+      bgColor: 'bg-primary/10',
+      url: '/cro-dashboard',
+    },
+    {
+      title: 'Contacted Customers',
+      value: croContactedCount,
+      change: null,
+      changeLabel: `${croPendingCount} pending outreach`,
+      icon: Phone,
+      trend: croContactedCount > 0 ? ('up' as const) : ('neutral' as const),
+      color: 'text-info',
+      bgColor: 'bg-info/10',
+      url: '/cro-dashboard?status=contacted',
+    },
+  ];
+
   // Determine which stat cards to show — combine for multi-role users
   const getStatCards = () => {
     const cards: ((typeof salesStatCards)[0] & { loading?: boolean })[] = [];
     if (showAccountsDashboard) cards.push(...accountsStatCards.map(c => ({ ...c, loading: accountsLoading })));
     if (showProcurementDashboard && !isManagerOrAdmin) cards.push(...procurementStatCards.map(c => ({ ...c, loading: procLoading })));
     if (showSalesDashboard) cards.push(...salesStatCards.map(c => ({ ...c, loading: salesLoading })));
-    // If only accounts+CRO (no sales/procurement), show accounts cards
+    if (showCRODashboard && !isManagerOrAdmin && !showSalesDashboard) {
+      cards.push(...croStatCards.map(c => ({ ...c, loading: lqtStatsLoading || croAssignmentsLoading })));
+    }
+    // Fallback if no specific role cards matched
     if (cards.length === 0) return salesStatCards.map(c => ({ ...c, loading: salesLoading }));
     // Deduplicate by title (e.g. both accounts and sales have "Total Customers")
     const seen = new Set<string>();
@@ -501,7 +580,18 @@ function FullDashboard() {
           <Card 
             key={stat.title} 
             className="stat-card hover:border-primary/30 transition-all cursor-pointer hover:shadow-md"
-            onClick={() => setActiveDrilldown(stat.title)}
+            onClick={() => {
+              const drilldownTitles = [
+                'Total Leads', 'Total Revenue', 'Total Customers', 'Pending Quotations', 'Deals Won',
+                'Draft POs', 'Pending POs', 'Low Stock Alerts', 'Active Suppliers', 'Inventory Items',
+                'Total Receivables', 'Overdue Payments'
+              ];
+              if (drilldownTitles.includes(stat.title)) {
+                setActiveDrilldown(stat.title);
+              } else if (stat.url) {
+                navigate(stat.url);
+              }
+            }}
           >
             <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
               <CardTitle className="text-sm font-medium text-muted-foreground">
@@ -542,6 +632,107 @@ function FullDashboard() {
 
       {/* Charts Section */}
       <div className="grid gap-6 lg:grid-cols-2">
+        {/* CRO & LQT Live Workspace Hub */}
+        {showCRODashboard && !showSalesDashboard && (
+          <div className="lg:col-span-2 space-y-4">
+            <Card className="glass-card border-primary/20 bg-gradient-to-br from-primary/5 via-card to-background">
+              <CardHeader className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 pb-2">
+                <div>
+                  <div className="flex items-center gap-2">
+                    <Badge variant="outline" className="border-primary/40 text-primary">
+                      CRO Workspace
+                    </Badge>
+                    <Badge variant="secondary">
+                      Active Queue
+                    </Badge>
+                  </div>
+                  <CardTitle className="text-xl mt-2 flex items-center gap-2">
+                    <Inbox className="h-5 w-5 text-primary" />
+                    Lead Qualification & Customer Outreach Hub
+                  </CardTitle>
+                  <CardDescription>
+                    Live overview of inbound lead triage and assigned customer relationships.
+                  </CardDescription>
+                </div>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <Button 
+                    onClick={() => navigate('/lqt-inbox')}
+                    className="gap-2 shadow-sm"
+                  >
+                    <Inbox className="h-4 w-4" />
+                    Open LQT Inbox
+                    {(lqtStats?.pending ?? 0) > 0 && (
+                      <Badge variant="secondary" className="ml-1 bg-primary-foreground/20 text-primary-foreground text-xs">
+                        {lqtStats?.pending}
+                      </Badge>
+                    )}
+                  </Button>
+                  <Button 
+                    variant="outline" 
+                    onClick={() => navigate('/cro-dashboard')}
+                    className="gap-2"
+                  >
+                    <Users className="h-4 w-4" />
+                    Customer Outreach ({croAssignments.length})
+                  </Button>
+                </div>
+              </CardHeader>
+              <CardContent className="pt-4">
+                <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+                  <div className="p-3.5 rounded-lg border bg-card/60 space-y-1">
+                    <p className="text-xs text-muted-foreground font-medium">Pending Triage</p>
+                    <div className="flex items-baseline justify-between">
+                      <span className="text-2xl font-bold font-display">{lqtStats?.pending ?? 0}</span>
+                      <span className="text-xs text-amber-500 font-medium">
+                        {lqtStats?.oldestPendingLabel ? `Oldest: ${lqtStats.oldestPendingLabel}` : 'Up to date'}
+                      </span>
+                    </div>
+                  </div>
+                  <div className="p-3.5 rounded-lg border bg-card/60 space-y-1">
+                    <p className="text-xs text-muted-foreground font-medium">Qualified Today</p>
+                    <div className="flex items-baseline justify-between">
+                      <span className="text-2xl font-bold font-display text-success">{lqtStats?.qualifiedToday ?? 0}</span>
+                      <span className="text-xs text-muted-foreground">Sent to sales</span>
+                    </div>
+                  </div>
+                  <div className="p-3.5 rounded-lg border bg-card/60 space-y-1">
+                    <p className="text-xs text-muted-foreground font-medium">Discarded Today</p>
+                    <div className="flex items-baseline justify-between">
+                      <span className="text-2xl font-bold font-display text-muted-foreground">{lqtStats?.discardedToday ?? 0}</span>
+                      <span className="text-xs text-muted-foreground">Filtered junk</span>
+                    </div>
+                  </div>
+                  <div className="p-3.5 rounded-lg border bg-card/60 space-y-1">
+                    <p className="text-xs text-muted-foreground font-medium">Assigned Customers</p>
+                    <div className="flex items-baseline justify-between">
+                      <span className="text-2xl font-bold font-display text-primary">{croAssignments.length}</span>
+                      <span className="text-xs text-info font-medium">{croContactedCount} contacted</span>
+                    </div>
+                  </div>
+                </div>
+
+                {(lqtStats?.priorityPending ?? 0) > 0 && (
+                  <div className="mt-4 p-3 rounded-lg border border-amber-500/30 bg-amber-500/10 flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <AlertCircle className="h-4 w-4 text-amber-600 dark:text-amber-400 shrink-0" />
+                      <span className="text-sm font-medium text-amber-900 dark:text-amber-200">
+                        {lqtStats?.priorityPending} high-priority lead(s) require immediate qualification
+                      </span>
+                    </div>
+                    <Button 
+                      size="sm" 
+                      variant="ghost" 
+                      className="text-amber-800 dark:text-amber-200 hover:bg-amber-500/20 h-7 text-xs"
+                      onClick={() => navigate('/lqt-inbox')}
+                    >
+                      Process now →
+                    </Button>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          </div>
+        )}
         {/* Accounts Charts */}
         {showAccountsDashboard && (
           <>
@@ -732,6 +923,54 @@ function FullDashboard() {
                   label="View Customers" 
                   description="Browse customer accounts"
                   onClick={() => navigate('/accounts')}
+                />
+              </>
+            )}
+
+            {/* CRO Quick Actions */}
+            {showCRODashboard && (
+              <>
+                <QuickActionButton 
+                  icon={Inbox} 
+                  label="LQT Inbox" 
+                  description="Qualify or discard pending inbound leads"
+                  onClick={() => navigate('/lqt-inbox')}
+                />
+                <QuickActionButton 
+                  icon={Phone} 
+                  label="Customer Outreach" 
+                  description="Manage assigned accounts & record calls"
+                  onClick={() => navigate('/cro-dashboard')}
+                />
+                <QuickActionButton 
+                  icon={TrendingUp} 
+                  label="Add New Lead" 
+                  description="Create a manual lead entry"
+                  onClick={() => setShowCreateLead(true)}
+                />
+                <QuickActionButton 
+                  icon={Clock} 
+                  label="My Attendance" 
+                  description="Check in / daily punch records"
+                  onClick={() => navigate('/attendance')}
+                />
+              </>
+            )}
+
+            {/* Fallback for general employees without dedicated department */}
+            {!showSalesDashboard && !showProcurementDashboard && !showAccountsDashboard && !showCRODashboard && (
+              <>
+                <QuickActionButton 
+                  icon={Clock} 
+                  label="My Attendance" 
+                  description="Check in / view attendance records"
+                  onClick={() => navigate('/attendance')}
+                />
+                <QuickActionButton 
+                  icon={TrendingUp} 
+                  label="Add New Lead" 
+                  description="Submit a new lead to the system"
+                  onClick={() => setShowCreateLead(true)}
                 />
               </>
             )}

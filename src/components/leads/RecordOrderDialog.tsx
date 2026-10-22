@@ -174,6 +174,7 @@ export function RecordOrderDialog({
         }
         toast.error(`PO upload failed: ${err?.message || 'Unknown error'}. Order was not created.`);
         setIsSubmitting(false);
+        isSubmittingRef.current = false;
         return;
       }
 

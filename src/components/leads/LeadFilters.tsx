@@ -1,4 +1,4 @@
-import { Search, CalendarIcon, X } from 'lucide-react';
+import { Search, CalendarIcon, X, RotateCcw } from 'lucide-react';
 import { format } from 'date-fns';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
@@ -29,11 +29,16 @@ type EnquiryStatus = Database['public']['Enums']['enquiry_status'];
 
 const leadStatusOptions: { value: LeadStatus; label: string }[] = [
   { value: 'new', label: 'New' },
+  { value: 'contacted', label: 'Contacted' },
   { value: 'engaged', label: 'Engaged' },
+  { value: 'qualified', label: 'Qualified' },
+  { value: 'proposal', label: 'Proposal' },
   { value: 'quoted', label: 'Quoted' },
   { value: 'negotiation', label: 'Negotiation' },
   { value: 'won', label: 'Won' },
   { value: 'lost', label: 'Lost' },
+  { value: 'enquiry', label: 'Enquiry' },
+  { value: 'no_enquiry', label: 'No Enquiry' },
 ];
 
 const leadSourceOptions: { value: LeadSource; label: string }[] = [
@@ -45,6 +50,7 @@ const leadSourceOptions: { value: LeadSource; label: string }[] = [
   { value: 'website', label: 'Website' },
   { value: 'referral', label: 'Referral' },
   { value: 'manual', label: 'Manual' },
+  { value: 'cro_followup', label: 'CRO Follow-up' },
 ];
 
 const escalationLevelOptions: { value: EscalationLevel; label: string }[] = [
@@ -61,6 +67,7 @@ const enquiryPresenceOptions = [
 ];
 
 const enquiryStatusOptions: { value: EnquiryStatus; label: string }[] = [
+  { value: 'no_enquiry', label: 'No Enquiry' },
   { value: 'pending_prices', label: 'Pending Prices' },
   { value: 'partial_prices', label: 'Partial Prices' },
   { value: 'ready_to_quote', label: 'Ready to Quote' },
@@ -111,6 +118,73 @@ export function LeadFilters({ filters, onFiltersChange }: LeadFiltersProps) {
     onFiltersChange({ ...filters, dateFrom: undefined, dateTo: undefined });
   };
 
+  const isFiltered = Boolean(
+    filters.search ||
+    filters.statuses.length > 0 ||
+    filters.sources.length > 0 ||
+    filters.escalationLevels.length > 0 ||
+    filters.hasEnquiry.length > 0 ||
+    filters.enquiryStatuses.length > 0 ||
+    filters.priceMatched.length > 0 ||
+    filters.dateFrom ||
+    filters.dateTo ||
+    (filters.assignedTo !== 'all')
+  );
+
+  const handleResetAll = () => {
+    onFiltersChange({
+      statuses: [],
+      sources: [],
+      escalationLevels: [],
+      assignedTo: 'all',
+      search: '',
+      dateFrom: undefined,
+      dateTo: undefined,
+      sortBy: 'newest',
+      hasEnquiry: [],
+      enquiryStatuses: [],
+      priceMatched: [],
+    });
+  };
+
+  // Batch handlers for Lead Filters popover
+  const handleApplyLeadFilters = (newValues: Record<string, string[]>) => {
+    onFiltersChange({
+      ...filters,
+      statuses: newValues['Status'] ?? filters.statuses,
+      sources: newValues['Source'] ?? filters.sources,
+      escalationLevels: newValues['Escalation Level'] ?? filters.escalationLevels,
+    });
+  };
+
+  const handleClearLeadFilters = () => {
+    onFiltersChange({
+      ...filters,
+      statuses: [],
+      sources: [],
+      escalationLevels: [],
+    });
+  };
+
+  // Batch handlers for Enquiry Filters popover
+  const handleApplyEnquiryFilters = (newValues: Record<string, string[]>) => {
+    onFiltersChange({
+      ...filters,
+      hasEnquiry: newValues['Enquiry Presence'] ?? filters.hasEnquiry,
+      enquiryStatuses: newValues['Enquiry Status'] ?? filters.enquiryStatuses,
+      priceMatched: newValues['Price Matching'] ?? filters.priceMatched,
+    });
+  };
+
+  const handleClearEnquiryFilters = () => {
+    onFiltersChange({
+      ...filters,
+      hasEnquiry: [],
+      enquiryStatuses: [],
+      priceMatched: [],
+    });
+  };
+
   // Lead Filters Popover sections
   const leadFilterSections = [
     {
@@ -139,18 +213,21 @@ export function LeadFilters({ filters, onFiltersChange }: LeadFiltersProps) {
       title: 'Enquiry Presence',
       options: enquiryPresenceOptions,
       selectedValues: filters.hasEnquiry,
+      singleSelect: true,
       onChange: (values: string[]) => onFiltersChange({ ...filters, hasEnquiry: values }),
     },
     {
       title: 'Enquiry Status',
       options: enquiryStatusOptions,
       selectedValues: filters.enquiryStatuses,
+      singleSelect: false,
       onChange: (values: string[]) => onFiltersChange({ ...filters, enquiryStatuses: values }),
     },
     {
       title: 'Price Matching',
       options: priceMatchOptions,
       selectedValues: filters.priceMatched,
+      singleSelect: true,
       onChange: (values: string[]) => onFiltersChange({ ...filters, priceMatched: values }),
     },
   ];
@@ -164,11 +241,21 @@ export function LeadFilters({ filters, onFiltersChange }: LeadFiltersProps) {
             placeholder="Search leads..."
             value={filters.search}
             onChange={(e) => onFiltersChange({ ...filters, search: e.target.value })}
-            className="pl-9"
+            className="pl-9 pr-8"
           />
+          {filters.search && (
+            <button
+              type="button"
+              onClick={() => onFiltersChange({ ...filters, search: '' })}
+              className="absolute right-2.5 top-1/2 -translate-y-1/2 p-0.5 text-muted-foreground hover:text-foreground rounded-sm"
+              title="Clear search"
+            >
+              <X className="h-3.5 w-3.5" />
+            </button>
+          )}
         </div>
         
-        <div className="flex flex-wrap gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <Select
             value={filters.sortBy}
             onValueChange={(value: LeadSortOption) => onFiltersChange({ ...filters, sortBy: value })}
@@ -188,11 +275,15 @@ export function LeadFilters({ filters, onFiltersChange }: LeadFiltersProps) {
           <LeadFilterPopover
             label="Lead Filters"
             sections={leadFilterSections}
+            onApplySections={handleApplyLeadFilters}
+            onClearAll={handleClearLeadFilters}
           />
 
           <LeadFilterPopover
             label="Enquiry Filters"
             sections={enquiryFilterSections}
+            onApplySections={handleApplyEnquiryFilters}
+            onClearAll={handleClearEnquiryFilters}
           />
 
           {(isManager || isAdmin) && visibleUsers && visibleUsers.length > 0 && (
@@ -205,6 +296,7 @@ export function LeadFilters({ filters, onFiltersChange }: LeadFiltersProps) {
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">All Team</SelectItem>
+                <SelectItem value="unassigned">Unassigned</SelectItem>
                 {visibleUsers.map((user) => (
                   <SelectItem key={user.id} value={user.id}>
                     {user.full_name}
@@ -212,6 +304,19 @@ export function LeadFilters({ filters, onFiltersChange }: LeadFiltersProps) {
                 ))}
               </SelectContent>
             </Select>
+          )}
+
+          {isFiltered && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleResetAll}
+              className="gap-1.5 text-xs text-muted-foreground hover:text-destructive hover:border-destructive/40"
+              title="Reset all filters to default"
+            >
+              <RotateCcw className="h-3.5 w-3.5" />
+              Reset Filters
+            </Button>
           )}
         </div>
       </div>
@@ -273,7 +378,7 @@ export function LeadFilters({ filters, onFiltersChange }: LeadFiltersProps) {
         {(filters.dateFrom || filters.dateTo) && (
           <Button variant="ghost" size="sm" onClick={clearDates} className="h-8 px-2">
             <X className="h-4 w-4 mr-1" />
-            Clear
+            Clear Dates
           </Button>
         )}
       </div>

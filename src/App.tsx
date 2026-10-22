@@ -128,9 +128,9 @@ const TSTCaseDetail = lazy(() => import("./pages/TSTCaseDetail"));
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
-      staleTime: 60 * 1000,
+      staleTime: 15 * 1000,
       gcTime: 5 * 60 * 1000,
-      refetchOnWindowFocus: false,
+      refetchOnWindowFocus: true,
       // Never poll while the tab is in the background — keeps steady
       // load off the database when screens are left open.
       refetchIntervalInBackground: false,

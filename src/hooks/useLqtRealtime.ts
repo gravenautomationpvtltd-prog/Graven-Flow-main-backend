@@ -28,7 +28,7 @@ export function useLqtRealtime() {
         console.debug('[TIMING] ⚡ LQT Realtime update triggered query invalidation');
         qc.invalidateQueries({ queryKey: ['lqt-leads'] });
         qc.invalidateQueries({ queryKey: ['lqt-stats'] });
-      }, 200);
+      }, 100);
     };
 
     const channel = supabase

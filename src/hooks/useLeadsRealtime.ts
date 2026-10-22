@@ -16,7 +16,7 @@ export function useLeadsRealtime() {
 
   useEffect(() => {
     const handleLeadChange = (payload: any) => {
-      // 400ms debounce to collapse rapid consecutive inserts/updates into a single smooth re-fetch
+      // 50ms debounce to collapse rapid consecutive inserts/updates into a single smooth re-fetch
       if (timerRef.current) clearTimeout(timerRef.current);
       timerRef.current = setTimeout(() => {
         queryClient.invalidateQueries({ queryKey: ['leads'], type: 'active' });
@@ -29,7 +29,7 @@ export function useLeadsRealtime() {
         queryClient.invalidateQueries({ queryKey: ['user-quotation-performance'] });
         queryClient.invalidateQueries({ queryKey: ['spt-inbox'], type: 'active' });
         invalidateDashboardData(queryClient);
-      }, 400);
+      }, 50);
     };
 
     const channel = supabase

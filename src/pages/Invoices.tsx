@@ -38,8 +38,12 @@ export default function Invoices() {
       // Search filter
       if (searchQuery) {
         const query = searchQuery.toLowerCase();
-        if (!inv.invoice_number.toLowerCase().includes(query) &&
-            !inv.customer?.company_name?.toLowerCase().includes(query)) {
+        const matchesInvoiceNo = inv.invoice_number?.toLowerCase().includes(query);
+        const matchesCompany = inv.customer?.company_name?.toLowerCase().includes(query);
+        const matchesContact = inv.customer?.contact_person?.toLowerCase().includes(query);
+        const matchesPhone = inv.customer?.phone?.toLowerCase().includes(query);
+        const matchesEmail = inv.customer?.email?.toLowerCase().includes(query);
+        if (!matchesInvoiceNo && !matchesCompany && !matchesContact && !matchesPhone && !matchesEmail) {
           return false;
         }
       }
