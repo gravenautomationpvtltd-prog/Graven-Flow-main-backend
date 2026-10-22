@@ -10,6 +10,7 @@ import {
 } from '@/components/ui/table';
 import { LeadStatusBadge } from './LeadStatusBadge';
 import { LeadSourceBadge } from './LeadSourceBadge';
+import { LeadTypeBadge } from './LeadTypeBadge';
 import { EscalationBadge } from './EscalationBadge';
 import { EnquiryStatusBadge } from './EnquiryStatusBadge';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
@@ -168,7 +169,10 @@ export function LeadListTable({
                   </div>
                 </TableCell>
                 <TableCell>
-                  <LeadSourceBadge source={lead.source} />
+                  <div className="flex flex-col gap-1 items-start">
+                    <LeadSourceBadge source={lead.source} />
+                    <LeadTypeBadge type={lead.lead_type} />
+                  </div>
                 </TableCell>
                 <TableCell>
                   <LeadStatusBadge status={lead.status} />

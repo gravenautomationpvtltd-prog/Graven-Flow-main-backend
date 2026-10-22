@@ -24,7 +24,10 @@ interface LeadStatusBadgeProps {
 }
 
 export function LeadStatusBadge({ status, className }: LeadStatusBadgeProps) {
-  const config = statusConfig[status];
+  const config = (status && statusConfig[status]) || {
+    label: status ? String(status).replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase()) : 'Unknown',
+    className: 'bg-muted text-muted-foreground hover:bg-muted',
+  };
   
   return (
     <Badge variant="secondary" className={cn(config.className, className)}>

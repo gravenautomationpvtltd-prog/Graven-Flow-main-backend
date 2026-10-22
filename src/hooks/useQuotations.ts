@@ -803,7 +803,12 @@ export function useCreateQuotation() {
           })());
         }
 
-        await Promise.all(postTasks);
+        const postResults = await Promise.allSettled(postTasks);
+        postResults.forEach((res, i) => {
+          if (res.status === 'rejected') {
+            console.warn(`[useCreateQuotation] Post-creation task ${i} non-critical error:`, res.reason);
+          }
+        });
 
         recentQuotationCreations.set(dedupKey, { quotation: newQuotation, timestamp: Date.now() });
         setTimeout(() => {

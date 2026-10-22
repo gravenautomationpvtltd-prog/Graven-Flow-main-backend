@@ -6,10 +6,12 @@ import { mcpPlugin } from "@lovable.dev/mcp-js/stacks/supabase/vite";
 
 let devAuthPool: any = null;
 
+const DEFAULT_DB_URL = 'postgresql://postgres.hxnndpuwvxcqvvztcbvj:MQ6i84OTDBedxW3X@aws-0-ap-southeast-2.pooler.supabase.com:5432/postgres';
+
 function getAuthPool(pg: any) {
   if (!devAuthPool) {
     devAuthPool = new pg.Pool({
-      connectionString: 'postgresql://postgres:MQ6i84OTDBedxW3X@db.hxnndpuwvxcqvvztcbvj.supabase.co:5432/postgres',
+      connectionString: process.env.DATABASE_URL || DEFAULT_DB_URL,
       max: 5,
       idleTimeoutMillis: 120000,
       connectionTimeoutMillis: 10000,

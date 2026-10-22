@@ -51,24 +51,58 @@ export function useAccountsData(dateRange: DateRange, enabled: boolean = true) {
       if (dateRange.from) paymentsQuery = paymentsQuery.gte('payment_date', dateRange.from.toISOString());
       if (dateRange.to) paymentsQuery = paymentsQuery.lte('payment_date', dateRange.to.toISOString());
 
+      const fetchOrders = async () => {
+        try {
+          const res = await vEq(supabase.from('sales_orders').select('id, order_value, created_at, customer_id, customer:customers(company_name)'), activeVerticalId);
+          if (res.error) {
+            return await vEq(supabase.from('sales_orders').select('id, order_value, created_at, customer_id'), activeVerticalId);
+          }
+          return res;
+        } catch {
+          return { data: [] };
+        }
+      };
+
+      const fetchAllPayments = async () => {
+        try {
+          return await vEq(supabase.from('customer_payments').select('sales_order_id, amount'), activeVerticalId);
+        } catch {
+          return { data: [] };
+        }
+      };
+
+      const fetchFilteredPayments = async () => {
+        try {
+          return await paymentsQuery;
+        } catch {
+          return { data: [] };
+        }
+      };
+
+      const fetchInvoices = async () => {
+        try {
+          return await vEq(supabase.from('invoices').select('id, grand_total, amount_paid').neq('status', 'paid').neq('status', 'cancelled'), activeVerticalId);
+        } catch {
+          return { data: [] };
+        }
+      };
+
       const [
         ordersRes,
-        { data: allPayments },
-        { data: filteredPayments },
-        { data: invoices },
+        allPaymentsRes,
+        filteredPaymentsRes,
+        invoicesRes,
       ] = await Promise.all([
-        vEq(supabase.from('sales_orders').select('id, order_value, created_at, customer_id, customer:customers(company_name)'), activeVerticalId)
-          .then(async (res: any) => {
-            if (res.error) {
-              return await vEq(supabase.from('sales_orders').select('id, order_value, created_at, customer_id'), activeVerticalId);
-            }
-            return res;
-          }),
-        vEq(supabase.from('customer_payments').select('sales_order_id, amount'), activeVerticalId),
-        paymentsQuery,
-        vEq(supabase.from('invoices').select('id, grand_total, amount_paid').neq('status', 'paid').neq('status', 'cancelled'), activeVerticalId),
+        fetchOrders(),
+        fetchAllPayments(),
+        fetchFilteredPayments(),
+        fetchInvoices(),
       ]);
-      const orders = ordersRes.data || [];
+
+      const orders = ordersRes?.data || [];
+      const allPayments = allPaymentsRes?.data || [];
+      const filteredPayments = filteredPaymentsRes?.data || [];
+      const invoices = invoicesRes?.data || [];
 
       const paymentsByOrder: Record<string, number> = {};
       (allPayments || []).forEach((p: any) => {

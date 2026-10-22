@@ -144,6 +144,7 @@ type EnquiryStatus = Database['public']['Enums']['enquiry_status'];
 export interface LeadWithCustomer extends Lead {
   customer?: Database['public']['Tables']['customers']['Row'] | null;
   assigned_user?: Database['public']['Tables']['profiles']['Row'] | null;
+  lead_type?: string | null;
 }
 
 export type LeadSortOption = 
@@ -177,6 +178,8 @@ export interface LeadFilters {
   pageSize?: number;
   hasEnquiry?: boolean;
   priceMatched?: boolean;
+  leadType?: string;
+  leadTypes?: string[];
 }
 
 export interface LeadsResult {
@@ -305,6 +308,11 @@ export function useLeads(filters?: LeadFilters) {
           } else {
             query = query.or('enquiry_status.neq.price_matched,enquiry_status.is.null');
           }
+        }
+        if (filters?.leadTypes && filters.leadTypes.length > 0 && !filters.leadTypes.includes('all')) {
+          query = query.in('lead_type', filters.leadTypes);
+        } else if (filters?.leadType && filters.leadType !== 'all') {
+          query = query.eq('lead_type', filters.leadType);
         }
         if (activeVerticalId) {
           query = query.eq('vertical_id', activeVerticalId);
@@ -494,6 +502,8 @@ export function useUpdateLead() {
     },
     onSuccess: (data, variables) => {
       invalidateDashboardData(queryClient);
+      queryClient.setQueryData(['lead', data.id, false], (prev: any) => (prev ? { ...prev, ...data } : prev));
+      queryClient.setQueryData(['lead', data.id, true], (prev: any) => (prev ? { ...prev, ...data } : prev));
       queryClient.invalidateQueries({ queryKey: ['leads'] });
       queryClient.invalidateQueries({ queryKey: ['lead', data.id] });
       queryClient.invalidateQueries({ queryKey: ['spt-inbox'] });

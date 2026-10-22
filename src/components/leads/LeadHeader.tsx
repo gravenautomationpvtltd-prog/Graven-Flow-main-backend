@@ -24,6 +24,7 @@ import { useUpdateLead, useDeleteLead } from '@/hooks/useLeads';
 import { useCreateActivity } from '@/hooks/useActivities';
 import type { LeadWithCustomer } from '@/hooks/useLeads';
 import type { Database } from '@/integrations/supabase/types';
+import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { useAuth } from '@/hooks/useAuth';
 import { formatISTDateTime, formatISTRelativeTime } from '@/lib/date-utils';
@@ -61,14 +62,24 @@ export function LeadHeader({ lead }: LeadHeaderProps) {
     }
 
     if (status === 'quoted') {
-      const { count } = await supabase
-        .from('quotations')
-        .select('*', { count: 'exact', head: true })
-        .eq('lead_id', lead.id)
-        .is('deleted_at', null);
+      try {
+        const { count, error } = await supabase
+          .from('quotations')
+          .select('*', { count: 'exact', head: true })
+          .eq('lead_id', lead.id)
+          .is('deleted_at', null);
 
-      if (!count || count === 0) {
-        toast.error('Cannot set status to Quoted: No quotation exists for this lead. Please create a quotation first.');
+        if (error) {
+          toast.error('Failed to verify quotations: ' + error.message);
+          return;
+        }
+
+        if (!count || count === 0) {
+          toast.error('Cannot set status to Quoted: No quotation exists for this lead. Please create a quotation first.');
+          return;
+        }
+      } catch (err: any) {
+        toast.error('Failed to verify quotation status: ' + (err.message || 'Unknown error'));
         return;
       }
     }
@@ -81,42 +92,54 @@ export function LeadHeader({ lead }: LeadHeaderProps) {
   };
 
   const handleMarkWon = async (reason: string, notes?: string) => {
-    await updateLead.mutateAsync({
-      id: lead.id,
-      status: 'won',
-      won_at: new Date().toISOString(),
-      won_reason: reason,
-      won_reason_notes: reason === 'other' ? notes : null,
-    });
-    await createActivity.mutateAsync({
-      lead_id: lead.id,
-      activity_type: 'status_change',
-      description: `Lead marked as Won - Reason: ${reason}${notes ? ` (${notes})` : ''}`,
-    });
-    toast.success('Lead marked as won!');
-    setWonDialogOpen(false);
+    try {
+      await updateLead.mutateAsync({
+        id: lead.id,
+        status: 'won',
+        won_at: new Date().toISOString(),
+        won_reason: reason,
+        won_reason_notes: reason === 'other' ? notes : null,
+      });
+      await createActivity.mutateAsync({
+        lead_id: lead.id,
+        activity_type: 'status_change',
+        description: `Lead marked as Won - Reason: ${reason}${notes ? ` (${notes})` : ''}`,
+      }).catch((err) => console.warn('Activity logging error:', err));
+      toast.success('Lead marked as won!');
+      setWonDialogOpen(false);
+    } catch (err: any) {
+      console.error('Failed to mark lead as won:', err);
+    }
   };
 
   const handleMarkLost = async (reason: string, notes?: string) => {
-    await updateLead.mutateAsync({
-      id: lead.id,
-      status: 'lost',
-      lost_at: new Date().toISOString(),
-      lost_reason: reason,
-      lost_reason_notes: reason === 'other' ? notes : null,
-    });
-    await createActivity.mutateAsync({
-      lead_id: lead.id,
-      activity_type: 'status_change',
-      description: `Lead marked as Lost - Reason: ${reason}${notes ? ` (${notes})` : ''}`,
-    });
-    toast.info('Lead marked as lost');
-    setLostDialogOpen(false);
+    try {
+      await updateLead.mutateAsync({
+        id: lead.id,
+        status: 'lost',
+        lost_at: new Date().toISOString(),
+        lost_reason: reason,
+        lost_reason_notes: reason === 'other' ? notes : null,
+      });
+      await createActivity.mutateAsync({
+        lead_id: lead.id,
+        activity_type: 'status_change',
+        description: `Lead marked as Lost - Reason: ${reason}${notes ? ` (${notes})` : ''}`,
+      }).catch((err) => console.warn('Activity logging error:', err));
+      toast.info('Lead marked as lost');
+      setLostDialogOpen(false);
+    } catch (err: any) {
+      console.error('Failed to mark lead as lost:', err);
+    }
   };
 
   const handleDelete = async () => {
-    await deleteLead.mutateAsync(lead.id);
-    navigate('/leads');
+    try {
+      await deleteLead.mutateAsync(lead.id);
+      navigate('/leads');
+    } catch (err: any) {
+      console.error('Failed to delete lead:', err);
+    }
   };
 
   const handleDuplicate = () => {
@@ -130,7 +153,7 @@ export function LeadHeader({ lead }: LeadHeaderProps) {
     <>
       {/* Header Actions */}
       <div className="flex items-center justify-end gap-2 pb-2 border-b border-border/50">
-          <Select value={lead.status} onValueChange={handleStatusChange}>
+          <Select value={lead.status} onValueChange={handleStatusChange} disabled={updateLead.isPending}>
             <SelectTrigger className="w-[130px] h-8 text-sm">
               <SelectValue>
                 <LeadStatusBadge status={lead.status} />

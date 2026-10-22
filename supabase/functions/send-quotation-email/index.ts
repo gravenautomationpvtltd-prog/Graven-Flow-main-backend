@@ -240,10 +240,15 @@ function generateQuotationPDF(quotation: any, items: any[], documentType: 'quota
   doc.setFont('helvetica', 'normal');
   doc.text('Consignee (Ship to)', margin + 2, y + 4);
   
-  let custY = y + 8;
+  let custY = y + 7.5;
+  const companyName = (customer?.company_name || '').replace(/\s+/g, ' ').trim().toUpperCase();
+  const nameLines = doc.splitTextToSize(companyName, leftColWidth - 4);
   doc.setFont('helvetica', 'bold');
-  doc.text((customer?.company_name || '').toUpperCase(), margin + 2, custY);
-  custY += 4;
+  doc.setFontSize(nameLines.length > 2 ? 7 : 8);
+  nameLines.forEach((line: string) => {
+    doc.text(line, margin + 2, custY);
+    custY += 3.5;
+  });
   
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(7);
@@ -264,14 +269,17 @@ function generateQuotationPDF(quotation: any, items: any[], documentType: 'quota
   
   doc.rect(margin, y, leftColWidth, buyerHeight, 'S');
   
-  doc.setFontSize(8);
+  doc.setFontSize(7.5);
   doc.setFont('helvetica', 'normal');
   doc.text('Buyer (Bill to)', margin + 2, y + 4);
   
-  custY = y + 8;
+  custY = y + 7.5;
   doc.setFont('helvetica', 'bold');
-  doc.text((customer?.company_name || '').toUpperCase(), margin + 2, custY);
-  custY += 4;
+  doc.setFontSize(nameLines.length > 2 ? 7 : 8);
+  nameLines.forEach((line: string) => {
+    doc.text(line, margin + 2, custY);
+    custY += 3.5;
+  });
   
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(7);

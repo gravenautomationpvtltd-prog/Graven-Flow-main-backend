@@ -30,15 +30,15 @@ type EnquiryStatus = Database['public']['Enums']['enquiry_status'];
 const leadStatusOptions: { value: LeadStatus; label: string }[] = [
   { value: 'new', label: 'New' },
   { value: 'contacted', label: 'Contacted' },
+  { value: 'enquiry', label: 'Enquiry' },
+  { value: 'no_enquiry', label: 'No Enquiry' },
   { value: 'engaged', label: 'Engaged' },
-  { value: 'qualified', label: 'Qualified' },
-  { value: 'proposal', label: 'Proposal' },
   { value: 'quoted', label: 'Quoted' },
   { value: 'negotiation', label: 'Negotiation' },
   { value: 'won', label: 'Won' },
   { value: 'lost', label: 'Lost' },
-  { value: 'enquiry', label: 'Enquiry' },
-  { value: 'no_enquiry', label: 'No Enquiry' },
+  { value: 'qualified', label: 'Qualified' },
+  { value: 'proposal', label: 'Proposal' },
 ];
 
 const leadSourceOptions: { value: LeadSource; label: string }[] = [
@@ -103,6 +103,7 @@ export interface LeadFiltersState {
   hasEnquiry: string[];
   enquiryStatuses: string[];
   priceMatched: string[];
+  leadType?: string;
 }
 
 interface LeadFiltersProps {

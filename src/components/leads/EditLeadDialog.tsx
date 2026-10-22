@@ -31,6 +31,8 @@ import { useProfiles } from '@/hooks/useProfiles';
 import { useAuth } from '@/hooks/useAuth';
 import { Loader2 } from 'lucide-react';
 import type { Database } from '@/integrations/supabase/types';
+import { supabase } from '@/integrations/supabase/client';
+import { toast } from 'sonner';
 
 type LeadSource = Database['public']['Enums']['lead_source'];
 type LeadStatus = Database['public']['Enums']['lead_status'];

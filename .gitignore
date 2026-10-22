@@ -30,6 +30,9 @@ dist-ssr
 # Build artifacts
 dist.zip
 .env
+.env.*
+.env*.local
+backup*
 scratch/
 hostinger-live-upload/
 upload_files/

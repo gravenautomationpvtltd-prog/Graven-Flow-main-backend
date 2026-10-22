@@ -1,7 +1,8 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { Plus } from 'lucide-react';
+import { Plus, Mail, ShoppingBag, Phone } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { LeadFilters, type LeadFiltersState } from '@/components/leads/LeadFilters';
 import { LeadListTable } from '@/components/leads/LeadListTable';
 import { CreateLeadDialog } from '@/components/leads/CreateLeadDialog';
@@ -47,6 +48,7 @@ function parseFiltersFromURL(searchParams: URLSearchParams): { filters: LeadFilt
       hasEnquiry: parseArray('hasEnquiry'),
       enquiryStatuses: parseArray('enquiryStatuses'),
       priceMatched: parseArray('priceMatched'),
+      leadType: searchParams.get('leadType') || 'all',
     },
     page: parseInt(searchParams.get('page') || '0', 10) || 0,
     pageSize: parseInt(searchParams.get('pageSize') || '50', 10) || 50,
@@ -68,6 +70,7 @@ function serializeFiltersToURL(filters: LeadFiltersState, page: number, pageSize
   if (filters.hasEnquiry.length) params.set('hasEnquiry', filters.hasEnquiry.join(','));
   if (filters.enquiryStatuses.length) params.set('enquiryStatuses', filters.enquiryStatuses.join(','));
   if (filters.priceMatched.length) params.set('priceMatched', filters.priceMatched.join(','));
+  if (filters.leadType && filters.leadType !== 'all') params.set('leadType', filters.leadType);
   if (page > 0) params.set('page', String(page));
   if (pageSize !== 50) params.set('pageSize', String(pageSize));
   
@@ -76,7 +79,7 @@ function serializeFiltersToURL(filters: LeadFiltersState, page: number, pageSize
 
 // Check if URL has any lead filter params
 function hasURLParams(searchParams: URLSearchParams): boolean {
-  const keys = ['q', 'statuses', 'sources', 'escalations', 'assignedTo', 'dateFrom', 'dateTo', 'sortBy', 'hasEnquiry', 'enquiryStatuses', 'priceMatched', 'page', 'pageSize'];
+  const keys = ['q', 'statuses', 'sources', 'escalations', 'assignedTo', 'dateFrom', 'dateTo', 'sortBy', 'hasEnquiry', 'enquiryStatuses', 'priceMatched', 'leadType', 'page', 'pageSize'];
   return keys.some(key => searchParams.has(key));
 }
 
@@ -126,6 +129,7 @@ export default function Leads() {
         hasEnquiry: [],
         enquiryStatuses: [],
         priceMatched: [],
+        leadType: 'all',
       },
       page: 0,
       pageSize: 50,
@@ -205,6 +209,7 @@ export default function Leads() {
     sortBy: filters.sortBy,
     page: currentPage,
     pageSize: pageSize,
+    leadType: filters.leadType && filters.leadType !== 'all' ? filters.leadType : undefined,
     hasEnquiry: filters.hasEnquiry.includes('yes') && !filters.hasEnquiry.includes('no')
       ? true
       : filters.hasEnquiry.includes('no') && !filters.hasEnquiry.includes('yes')
@@ -243,6 +248,33 @@ export default function Leads() {
             {t('leads.add_lead', 'Add Lead')}
           </Button>
         </div>
+      </div>
+
+      {/* Category Tabs: All Enquiries, Contacts, Buy Leads, Calls */}
+      <div className="flex items-center justify-between gap-4 flex-wrap border-b pb-4">
+        <Tabs 
+          value={filters.leadType || 'all'} 
+          onValueChange={(val) => handleFiltersChange({ ...filters, leadType: val })}
+          className="w-full sm:w-auto"
+        >
+          <TabsList className="grid grid-cols-4 w-full sm:w-[480px] h-10 p-1 bg-muted/70">
+            <TabsTrigger value="all" className="text-xs sm:text-sm font-medium">
+              All Enquiries
+            </TabsTrigger>
+            <TabsTrigger value="contact" className="flex items-center gap-1.5 text-xs sm:text-sm font-medium">
+              <Mail className="h-3.5 w-3.5 text-blue-500" />
+              Contacts
+            </TabsTrigger>
+            <TabsTrigger value="buylead" className="flex items-center gap-1.5 text-xs sm:text-sm font-medium">
+              <ShoppingBag className="h-3.5 w-3.5 text-amber-500" />
+              Buy Leads
+            </TabsTrigger>
+            <TabsTrigger value="call" className="flex items-center gap-1.5 text-xs sm:text-sm font-medium">
+              <Phone className="h-3.5 w-3.5 text-purple-500" />
+              Calls
+            </TabsTrigger>
+          </TabsList>
+        </Tabs>
       </div>
 
       <LeadFilters filters={filters} onFiltersChange={handleFiltersChange} />

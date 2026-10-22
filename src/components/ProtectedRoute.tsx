@@ -1,4 +1,4 @@
-import { ReactNode } from 'react';
+import { ReactNode, useState, useEffect } from 'react';
 import { Navigate, useLocation } from 'react-router-dom';
 import { useAuth } from '@/hooks/useAuth';
 import { useTenantStatus } from '@/hooks/useTenantStatus';
@@ -16,8 +16,15 @@ export function ProtectedRoute({ children }: ProtectedRouteProps) {
   const { hasTenant, loading: tenantLoading } = useTenantStatus();
   const location = useLocation();
 
+  // Safety fallback: Never trap user in loading screen longer than 3 seconds
+  const [bootstrapTimedOut, setBootstrapTimedOut] = useState(false);
+  useEffect(() => {
+    const timer = setTimeout(() => setBootstrapTimedOut(true), 3000);
+    return () => clearTimeout(timer);
+  }, []);
+
   // Show loader only during initial bootstrap — not on background revalidation
-  const isInitialBootstrap = authLoading || (user && tenantLoading && !hasTenant);
+  const isInitialBootstrap = !bootstrapTimedOut && (authLoading || (user && tenantLoading && !hasTenant));
   if (isInitialBootstrap) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">

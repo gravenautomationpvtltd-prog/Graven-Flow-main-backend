@@ -1,6 +1,6 @@
 import { Helmet } from "react-helmet-async";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Settings as SettingsIcon, Plug, Building, Users, Shield, User, Clock, Wallet, Mail, MapPin, Megaphone, Building2, UsersRound, Globe, FileText, RefreshCw } from "lucide-react";
+import { Settings as SettingsIcon, Plug, Building, Users, Shield, User, Clock, Wallet, Mail, MapPin, Megaphone, Building2, UsersRound, Globe, FileText } from "lucide-react";
 import { IntegrationsSettings } from "@/components/settings/IntegrationsSettings";
 import { CompanyProfileSettings } from "@/components/settings/CompanyProfileSettings";
 import { EmailSenderSettings } from "@/components/settings/EmailSenderSettings";
@@ -156,11 +156,6 @@ const Settings = () => {
                 <span className="hidden sm:inline">Security</span>
               </TabsTrigger>
             )}
-
-            <TabsTrigger value="sync" className="flex items-center gap-2">
-              <RefreshCw className="h-4 w-4" />
-              <span className="hidden sm:inline">Sync</span>
-            </TabsTrigger>
           </TabsList>
 
           <TabsContent value="profile">

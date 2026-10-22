@@ -39,9 +39,10 @@ export function useSalesStats(dateRange: DateRange, enabled: boolean, assignedTo
   return useQuery({
     queryKey: ['dashboard-sales-stats', activeVerticalId, assignedTo ?? null, dateRange.from?.toISOString(), dateRange.to?.toISOString()],
     enabled,
-    staleTime: 10_000,
-    refetchOnWindowFocus: true,
-    refetchOnMount: true,
+    staleTime: 60_000,
+    refetchOnWindowFocus: false,
+    refetchOnMount: false,
+    retry: 1,
     queryFn: async (): Promise<DashboardStats> => {
       // 1. High-speed single-roundtrip RPC (bypasses slow row-by-row RLS scans, returns in <500ms)
       try {

@@ -1,6 +1,4 @@
-
-import { Suspense, lazy, useEffect } from "react";
-import { syncService } from "@/services/syncService";
+import { Suspense, lazy } from "react";
 import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -128,9 +126,9 @@ const TSTCaseDetail = lazy(() => import("./pages/TSTCaseDetail"));
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
-      staleTime: 15 * 1000,
-      gcTime: 5 * 60 * 1000,
-      refetchOnWindowFocus: true,
+      staleTime: 60 * 1000,
+      gcTime: 10 * 60 * 1000,
+      refetchOnWindowFocus: false,
       // Never poll while the tab is in the background — keeps steady
       // load off the database when screens are left open.
       refetchIntervalInBackground: false,
@@ -146,29 +144,7 @@ const PageLoader = () => (
 );
 
 const App = () => {
-  useEffect(() => {
-    // Automatically initialize background synchronization with https://gravenonedesk.in
-    syncService.startAutoSync();
 
-    const handleSyncComplete = (event: any) => {
-      const batchTotal = event?.detail?.batchTotal || 0;
-      // Invalidate active queries for all business entities updated during background sync
-      if (batchTotal > 0) {
-        queryClient.invalidateQueries({ queryKey: ['products'], type: 'active' });
-        queryClient.invalidateQueries({ queryKey: ['customers'], type: 'active' });
-        queryClient.invalidateQueries({ queryKey: ['suppliers'], type: 'active' });
-        queryClient.invalidateQueries({ queryKey: ['inventory'], type: 'active' });
-        queryClient.invalidateQueries({ queryKey: ['leads'], type: 'active' });
-        queryClient.invalidateQueries({ queryKey: ['quotations'], type: 'active' });
-        queryClient.invalidateQueries({ queryKey: ['orders'], type: 'active' });
-        queryClient.invalidateQueries({ queryKey: ['purchase-orders'], type: 'active' });
-      }
-    };
-    window.addEventListener('graven:sync-completed', handleSyncComplete);
-    return () => {
-      window.removeEventListener('graven:sync-completed', handleSyncComplete);
-    };
-  }, []);
 
   return (
     <ThemeProvider attribute="class" defaultTheme="system" enableSystem disableTransitionOnChange>

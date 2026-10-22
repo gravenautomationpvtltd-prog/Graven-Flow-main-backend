@@ -6,6 +6,7 @@ import { QueryClient } from '@tanstack/react-query';
  */
 export function invalidateDashboardData(queryClient: QueryClient): Promise<void> {
   return queryClient.invalidateQueries({
+    refetchType: 'active',
     predicate: (query) => {
       const key = String(query.queryKey[0] || '');
       return (

@@ -1,7 +1,7 @@
 import { supabase } from '@/integrations/supabase/client';
 
 export const MAX_PERSISTED_LEAD_IDS = 50;
-const CACHE_TTL_MS = 30_000; // 30 seconds
+const CACHE_TTL_MS = 60_000; // 60 seconds cache to eliminate redundant multi-table queries during pagination and filtering
 
 interface CacheEntry {
   ids: string[];
