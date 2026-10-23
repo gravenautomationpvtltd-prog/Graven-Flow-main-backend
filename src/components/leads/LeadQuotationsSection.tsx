@@ -605,11 +605,11 @@ export function LeadQuotationsSection({
             setDuplicateSelection(null);
           }
         }}
-        leadId={duplicateSelection ? duplicateSelection.leadId : leadId}
-        customerId={duplicateSelection ? duplicateSelection.customerId : customerId}
-        customerName={duplicateSelection ? duplicateSelection.customerName : customerName}
-        customerPhone={duplicateSelection ? duplicateSelection.customerPhone : customerPhone}
-        customerEmail={duplicateSelection ? duplicateSelection.customerEmail : customerEmail}
+        leadId={duplicateSelection ? (duplicateSelection.leadId ?? leadId) : leadId}
+        customerId={duplicateSelection ? (duplicateSelection.customerId ?? customerId) : customerId}
+        customerName={duplicateSelection ? (duplicateSelection.customerName || customerName) : customerName}
+        customerPhone={duplicateSelection ? (duplicateSelection.customerPhone || customerPhone) : customerPhone}
+        customerEmail={duplicateSelection ? (duplicateSelection.customerEmail || customerEmail) : customerEmail}
         existingDraftId={continueDraftId}
         duplicateFromId={duplicateFromId}
         itemsOverride={duplicateSelection?.items}
@@ -639,6 +639,8 @@ export function LeadQuotationsSection({
         open={isEditOpen}
         onOpenChange={setIsEditOpen}
         quotation={selectedQuotation || null}
+        leadId={leadId}
+        customerId={customerId}
         onSuccess={() => setSelectedQuotationId(null)}
       />
 

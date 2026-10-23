@@ -6,6 +6,8 @@ interface EditQuotationDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   quotation: QuotationWithDetails | null;
+  leadId?: string;
+  customerId?: string;
   onSuccess?: () => void;
 }
 
@@ -13,6 +15,8 @@ export function EditQuotationDialog({
   open,
   onOpenChange,
   quotation,
+  leadId,
+  customerId,
   onSuccess,
 }: EditQuotationDialogProps) {
   if (!quotation) return null;
@@ -22,6 +26,9 @@ export function EditQuotationDialog({
     onOpenChange(false);
   };
 
+  const effectiveLeadId = leadId || quotation.lead_id || undefined;
+  const effectiveCustomerId = customerId || quotation.customer_id || undefined;
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-[95vw] w-full max-h-[95vh] overflow-y-auto">
@@ -29,8 +36,8 @@ export function EditQuotationDialog({
           <DialogTitle>Edit Quotation - {quotation.quotation_number}</DialogTitle>
         </DialogHeader>
         <QuotationBuilder
-          leadId={quotation.lead_id || undefined}
-          customerId={quotation.customer_id || undefined}
+          leadId={effectiveLeadId}
+          customerId={effectiveCustomerId}
           customerName={quotation.customer?.company_name}
           customerPhone={quotation.customer?.phone}
           customerEmail={quotation.customer?.email}

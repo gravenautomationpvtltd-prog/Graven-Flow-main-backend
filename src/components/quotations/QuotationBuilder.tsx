@@ -528,6 +528,8 @@ export function QuotationBuilder({
         await updateQuotation.mutateAsync({
           id: existingQuotation.id,
           quotation: {
+            lead_id: leadId || existingQuotation.lead_id || undefined,
+            customer_id: customerId || existingQuotation.customer_id || undefined,
             subject: subject || `Quotation for ${customerName || 'Customer'}`,
             notes,
             terms_conditions: termsConditions,
@@ -559,8 +561,8 @@ export function QuotationBuilder({
         await updateQuotation.mutateAsync({
           id: draftQuotationId,
           quotation: {
-            lead_id: leadId,
-            customer_id: customerId,
+            lead_id: leadId || existingQuotation?.lead_id || undefined,
+            customer_id: customerId || existingQuotation?.customer_id || undefined,
             created_by: user?.id,
             subject: subject || `Quotation for ${customerName || 'Customer'}`,
             notes,
@@ -599,8 +601,8 @@ export function QuotationBuilder({
           await updateQuotation.mutateAsync({
             id: draftQuotationId,
             quotation: {
-              lead_id: leadId,
-              customer_id: customerId,
+              lead_id: leadId || existingQuotation?.lead_id || undefined,
+              customer_id: customerId || existingQuotation?.customer_id || undefined,
               created_by: user?.id,
               subject: subject || `Quotation for ${customerName || 'Customer'}`,
               notes,
@@ -623,8 +625,8 @@ export function QuotationBuilder({
         
         const result = await createQuotation.mutateAsync({
           quotation: {
-            lead_id: leadId,
-            customer_id: customerId,
+            lead_id: leadId || existingQuotation?.lead_id || undefined,
+            customer_id: customerId || existingQuotation?.customer_id || undefined,
             created_by: user?.id,
             subject: subject || `Quotation for ${customerName || 'Customer'}`,
             notes,
